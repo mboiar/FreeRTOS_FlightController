@@ -1,0 +1,40 @@
+# Ignore build output
+/Debug/
+/Release/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+#*.launch
+#*.ld
+#*.s
+*.obj
+*.so
+*.dll
+*.exe
+*.out
+
+# Other
+*.log
+
+# STM32CubeMX generated files to ignore
+#*.ioc
+
+# IDE settings
+.cproject
+.project
+.settings/
+.mxproject
+
+.vscode/
+
+# CMake build directories
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+install_manifest.txt
+
+CMakePresets.json
