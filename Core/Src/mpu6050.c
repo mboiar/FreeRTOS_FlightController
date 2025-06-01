@@ -1,4 +1,5 @@
 #include "mpu6050.h"
+#include "i2c.h"
 
 
 // Register map

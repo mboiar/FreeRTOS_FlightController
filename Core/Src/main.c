@@ -25,10 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "mpu6050.h"
-#include "bmp280.h"
 
-#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,12 +46,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-osThreadId_t TaskMPUHandle;
-const osThreadAttr_t TaskMPU_attributes = {
-  .name = "TaskMPU",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
 
 /* USER CODE END PV */
 
@@ -62,20 +53,11 @@ const osThreadAttr_t TaskMPU_attributes = {
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-void TaskMPU(void *argument);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int __io_putchar(int ch)
-{
-  if (ch == '\n') {
-    __io_putchar('\r');
-  }
-  HAL_UART_Transmit(&huart1, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
-  return 1;
-}
 
 /* USER CODE END 0 */
 
@@ -183,29 +165,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-/**
- * @brief Task to handle MPU operations
- * @param argument: Not used
- * @retval None
- */
-void TaskMPU(void *argument) {
-  for (;;) {
-    HAL_StatusTypeDef who_am_i = mpu_heartbeat();
-    if (who_am_i == HAL_OK) {
-      printf("Found: MPU6050\n");
-    } else {
-      printf("Error: 0x%02x\n", who_am_i);
-    }
-    osDelay(50);
-    who_am_i = bmp_heartbeat();
-    if (who_am_i == HAL_OK) {
-      printf("Found: MPU6050\n");
-    } else {
-      printf("Error: 0x%02x\n", who_am_i);
-    }
-    osDelay(50);
-  }
-}
+
 /* USER CODE END 4 */
 
 /**
