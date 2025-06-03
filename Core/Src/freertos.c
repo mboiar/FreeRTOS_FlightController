@@ -176,21 +176,27 @@ void TaskLED(void *argument)
  */
 void TaskMPU(void *argument) {
   I2C_Scan(&hi2c1);
-  HAL_StatusTypeDef who_am_i;
+  BMP_CONFIG_PARAMS conf_p = {
+    .filter_coef = 4,           // x16
+    .standby_time = 0,           // 0.5 ms
+    .spi3w_en = 0
+  };
+  BMP_CTRL_MEAS_PARAMS ctrl_p = {
+    .mode = BMP_NORMAL,
+    .temp_oversampling = 1,     // x1
+    .pressure_oversampling = 3, // x4
+  };
+  BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
+  if (bmp_init(&tp, &pp, ctrl_p, conf_p) == HAL_OK) {
+    printf("OK: BMP280");
+  } else {
+    printf("Error: BMP280 Init failed");
+  }
+  osDelay(100);
+  float temp = 0, pressure = 0;
   for (;;) {
     printf("TaskMPU");
-    who_am_i = bmp_heartbeat();
-    if (who_am_i == HAL_OK) {
-      printf("Found: bmp280\n");
-    } else {
-      printf("Error: 0x%02x\n", who_am_i);
-    }
-    // who_am_i = mpu_heartbeat();
-    // if (who_am_i == HAL_OK) {
-    //   printf("Found: MPU6050\n");
-    // } else {
-    //   printf("Error: 0x%02x\n", who_am_i);
-    // }
+    bmp_acquire_data(&pressure, &temp, tp, pp);
     osDelay(500);
   }
 }
