@@ -66,13 +66,6 @@ const osThreadAttr_t defaultTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TaskLED0 */
-osThreadId_t TaskLED0Handle;
-const osThreadAttr_t TaskLED0_attributes = {
-  .name = "TaskLED0",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -81,7 +74,6 @@ void I2C_Scan(I2C_HandleTypeDef *hi2c);
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
-void TaskLED(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -113,10 +105,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  //defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-
-  /* creation of TaskLED0 */
-  //TaskLED0Handle = osThreadNew(TaskLED, NULL, &TaskLED0_attributes);
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   TaskMPUHandle = osThreadNew(TaskMPU, NULL, &TaskMPU_attributes);
@@ -145,26 +134,6 @@ void StartDefaultTask(void *argument)
     osDelay(1000);
   }
   /* USER CODE END StartDefaultTask */
-}
-
-/* USER CODE BEGIN Header_TaskLED */
-/**
-* @brief Function implementing the TaskLED0 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_TaskLED */
-void TaskLED(void *argument)
-{
-  /* USER CODE BEGIN TaskLED */
-  /* Infinite loop */
-  for(;;)
-  {
-    printf("TaskLED");
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    osDelay(1000);
-  }
-  /* USER CODE END TaskLED */
 }
 
 /* Private application code --------------------------------------------------*/
