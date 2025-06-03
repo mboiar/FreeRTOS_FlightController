@@ -102,36 +102,17 @@ int main(void)
   osKernelInitialize();
 
   /* Call init function for freertos objects (in cmsis_os2.c) */
-  //MX_FREERTOS_Init();
+  MX_FREERTOS_Init();
 
   /* Start scheduler */
-  //osKernelStart();
+  osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
-    // I2C_Scan(&hi2c1);
-  BMP_CONFIG_PARAMS conf_p = {
-    .filter_coef = 4,           // x16
-    .standby_time = 0,           // 0.5 ms
-    .spi3w_en = 0
-  };
-  BMP_CTRL_MEAS_PARAMS ctrl_p = {
-    .mode = BMP_NORMAL,
-    .temp_oversampling = 1,     // x1
-    .pressure_oversampling = 3, // x4
-  };
-  BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
-  if (bmp_init(&tp, &pp, ctrl_p, conf_p) == HAL_OK) {
-    printf("OK: BMP280");
-  } else {
-    printf("Error: BMP280 Init failed");
-  }
-  osDelay(100);
-  float temp = 0, pressure = 0;
+  {  
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
