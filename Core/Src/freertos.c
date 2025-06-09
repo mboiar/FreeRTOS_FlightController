@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "mpu6050.h"
 #include "bmp280.h"
+#include "flash_mem.h"
 
 #include "uart_logger.h"
 #include "controller.h"
@@ -35,10 +36,17 @@
 #include "usart.h"
 #include "i2c.h"
 #include "string.h"
+
+#include "melody.h"
+
+#include "limits.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+
 
 /* USER CODE END PTD */
 
@@ -75,6 +83,8 @@ const osThreadAttr_t TaskUARTLogging_attributes = {
   .priority = (osPriority_t) osPriorityHigh1,
 };
 
+const UBaseType_t xArrayIndex = 1;
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -86,6 +96,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+
 void TaskMPU(void *argument);
 void TaskFlightLoop(void *argument);
 void TaskUARTLogging(void *argument);
@@ -111,7 +122,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+   
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -124,7 +135,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  // defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   TaskMPUHandle = osThreadNew(TaskMPU, NULL, &TaskMPU_attributes);
@@ -149,9 +160,83 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+  //uint32_t PreviousWakeTime = osKernelSysTick();
+  //uint32_t OctaveFour[7] = {262, 294, 330, 349, 392, 440, 493}; // Octave_4 Frequencies (C4->B4)
+  uint8_t NoteIndex = 0;
+
+  // Tone cur_tone;
+  static UBaseType_t blocked = 1;
+
+  uint8_t resp[6] = {0};
+  uint8_t flashmem_device_id_val = 0, flashmem_manuf_id_val = 0;
+  flashmem_device_id(resp);
+  // ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+  uint32_t ulNotifiedValue = 0;
+  BaseType_t xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  if (xResult == pdPASS) {
+    if ((ulNotifiedValue & 0x02) != 0) {
+      flashmem_manuf_id_val = resp[4];
+      flashmem_device_id_val = resp[5];
+    }
+  } else {
+    // FAIL
+  }
+  uint8_t status_bits[3] = {0};
+  flashmem_status(status_bits);
+  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  if ((ulNotifiedValue & 0x02) != 0) {
+
+  }
+  flashmem_sector_erase(0, SECTOR_ERASE_4K);
+  uint8_t data[15] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x02, 0x01, 0x01, 0x01, 0x08, 0x04, 0x02};
+  flashmem_page_program(data, 15, 0);
+  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  if ((ulNotifiedValue & 0x02) != 0) {
+
+  }
+  uint8_t data_rxtx[14] = {0};
+  flashmem_read_data(data_rxtx, 14, 0);
+  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  if ((ulNotifiedValue & 0x02) != 0) {
+
+  }
+
   /* Infinite loop */
-  for(;;)
-  {
+  for(;;) {
+    if (blocked) {
+      // if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
+      xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+      if (xResult == pdPASS) {
+        if ((ulNotifiedValue & 0x01) != 0) {
+          blocked = 0;
+        }
+      }
+    } else {
+      // if (ulTaskNotifyTake(pdFALSE, 0)) {
+      xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, 0);
+      if (xResult == pdPASS) {
+        if ((ulNotifiedValue & 0x01) != 0) {
+          blocked = 1;
+          TIM1->CCR1 = 0;
+          continue;
+        }
+      }
+    }
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    if(NoteIndex == 25){
+      NoteIndex = 0;
+    }
+    int freq = hb_melody[NoteIndex];
+    int dur = hb_durations[NoteIndex];
+    // cur_tone = canon_melody[NoteIndex];
+    if (freq > 0) {
+      TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
+      TIM1->CCR1 = (TIM1->ARR >> 1); // Set Duty Cycle 50%
+    } else {
+      TIM1->CCR1 = 0;
+    }
+    NoteIndex++;
+    vTaskDelay(pdMS_TO_TICKS(1000 / dur));
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -165,6 +250,7 @@ void StartDefaultTask(void *argument)
  * @retval None
  */
 void TaskMPU(void *argument) {
+
   I2C_Scan(&hi2c1);
   BMP_CONFIG_PARAMS conf_p = {
     .filter_coef = 4,           // x16
@@ -177,17 +263,17 @@ void TaskMPU(void *argument) {
     .pressure_oversampling = 3, // x4
   };
   BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
-  if (bmp_init(&tp, &pp, ctrl_p, conf_p) == HAL_OK) {
-    printf("OK: BMP280");
-  } else {
-    printf("Error: BMP280 Init failed");
-  }
-  osDelay(100);
-  float temp = 0, pressure = 0;
+  // if (bmp_init(&tp, &pp, ctrl_p, conf_p) == HAL_OK) {
+  //   printf("OK: BMP280");
+  // } else {
+  //   printf("Error: BMP280 Init failed");
+  // }
+  // osDelayUntil(100);
+  // float temp = 0, pressure = 0;
   for (;;) {
-    printf("TaskMPU");
-    bmp_acquire_data(&pressure, &temp, tp, pp);
-    osDelay(500);
+  //   printf("TaskMPU");
+  //   bmp_acquire_data(&pressure, &temp, tp, pp);
+    vTaskDelay(2000);
   }
 }
 
@@ -213,5 +299,33 @@ void TaskFlightLoop(void *argument) {
   }
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    if (GPIO_Pin == GPIO_PIN_0) {
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xTaskNotifyFromISR(defaultTaskHandle, 0x01, eSetBits, &xHigherPriorityTaskWoken);
+        // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    }
+}
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
+  if (hspi == &hspi1) {
+    flashmem_transfer_done();
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
+    // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
+  if (hspi == &hspi1) {
+    flashmem_transfer_done();
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
+    // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
+}
 /* USER CODE END Application */
 
