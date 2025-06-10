@@ -37,7 +37,7 @@
 #include "i2c.h"
 #include "string.h"
 
-#include "melody.h"
+//#include "melody.h"
 
 #include "limits.h"
 
@@ -173,12 +173,12 @@ void StartDefaultTask(void *argument)
   status_registers status_bits;
   w25q64_status(&status_bits);
 
-  uint8_t data[14] = {0x00, 0x00, 0x00, 0x00, 0x10, 0x11, 0x13, 0x16, 0x1A, 0xB4, 0xD3, 0xF1, 0xDD, 0xAA};
-  w25q64_page_program_IT(data, 14, 0x33);
-  uint32_t ulNotifiedValue = 0;
-  BaseType_t xResult;
-  // while ((ulNotifiedValue & 0x02) == 0) {
-    xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  // uint8_t data[14] = {0x00, 0x00, 0x00, 0x00, 0x10, 0x11, 0x13, 0x16, 0x1A, 0xB4, 0xD3, 0xF1, 0xDD, 0xAA};
+  // w25q64_page_program_IT(data, 14, 0x33);
+  // uint32_t ulNotifiedValue = 0;
+  // BaseType_t xResult;
+  // // while ((ulNotifiedValue & 0x02) == 0) {
+  //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
   // }
   bool busy = true;
   while (busy) {
@@ -190,40 +190,41 @@ void StartDefaultTask(void *argument)
 
   /* Infinite loop */
   for(;;) {
-    if (blocked) {
-      // if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
-      xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
-      if (xResult == pdPASS) {
-        if ((ulNotifiedValue & 0x01) != 0) {
-          blocked = 0;
-        }
-      }
-    } else {
-      // if (ulTaskNotifyTake(pdFALSE, 0)) {
-      xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, 0);
-      if (xResult == pdPASS) {
-        if ((ulNotifiedValue & 0x01) != 0) {
-          blocked = 1;
-          TIM1->CCR1 = 0;
-          continue;
-        }
-      }
-    }
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    if(NoteIndex == 25){
-      NoteIndex = 0;
-    }
-    int freq = hb_melody[NoteIndex];
-    int dur = hb_durations[NoteIndex];
-    // cur_tone = canon_melody[NoteIndex];
-    if (freq > 0) {
-      TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
-      TIM1->CCR1 = (TIM1->ARR >> 1); // Set Duty Cycle 50%
-    } else {
-      TIM1->CCR1 = 0;
-    }
-    NoteIndex++;
-    vTaskDelay(pdMS_TO_TICKS(1000 / dur));
+    // if (blocked) {
+    //   // if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
+    //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+    //   if (xResult == pdPASS) {
+    //     if ((ulNotifiedValue & 0x01) != 0) {
+    //       blocked = 0;
+    //     }
+    //   }
+    // } else {
+    //   // if (ulTaskNotifyTake(pdFALSE, 0)) {
+    //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, 0);
+    //   if (xResult == pdPASS) {
+    //     if ((ulNotifiedValue & 0x01) != 0) {
+    //       blocked = 1;
+    //       TIM1->CCR1 = 0;
+    //       continue;
+    //     }
+    //   }
+    // }
+    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    // if(NoteIndex == 25){
+    //   NoteIndex = 0;
+    // }
+    // int freq = hb_melody[NoteIndex];
+    // int dur = hb_durations[NoteIndex];
+    // // cur_tone = canon_melody[NoteIndex];
+    // if (freq > 0) {
+    //   TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
+    //   TIM1->CCR1 = (TIM1->ARR >> 1); // Set Duty Cycle 50%
+    // } else {
+    //   TIM1->CCR1 = 0;
+    // }
+    // NoteIndex++;
+    // vTaskDelay(pdMS_TO_TICKS(1000 / dur));
+    vTaskDelay(pdMS_TO_TICKS(200));
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -239,6 +240,24 @@ void StartDefaultTask(void *argument)
 void TaskMPU(void *argument) {
 
   I2C_Scan(&hi2c1);
+
+  HAL_StatusTypeDef mpu_status = mpu6050_heartbeat();
+  mpu6050_set_power_options(CLKSEL_PLLX | MPU6050_CYCLE_BIT, LP_WAKE_40HZ);
+
+  mpu6050_out mpu6050_data;
+  mpu6050_read_data(&mpu6050_data);
+  float temp = mpu6050_calc_temp(mpu6050_data.temp);
+  accel_3d accel = {
+    .accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G),
+    .accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G),
+    .accel_z = mpu6050_calc_accel(mpu6050_data.accel_z, ACCEL_FS_2G)
+  };
+  gyro_3d gyro = {
+    .gyro_x = mpu6050_calc_accel(mpu6050_data.gyro_x, FS_SEL_250),
+    .gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250),
+    .gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250)
+  };
+
   BMP_CONFIG_PARAMS conf_p = {
     .filter_coef = 4,           // x16
     .standby_time = 0,           // 0.5 ms
@@ -260,7 +279,7 @@ void TaskMPU(void *argument) {
   for (;;) {
   //   printf("TaskMPU");
   //   bmp_acquire_data(&pressure, &temp, tp, pp);
-    vTaskDelay(2000);
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -290,6 +309,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == GPIO_PIN_0) {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         xTaskNotifyFromISR(defaultTaskHandle, 0x01, eSetBits, &xHigherPriorityTaskWoken);
+        // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    }
+        if (GPIO_Pin == GPIO_PIN_8) {
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xTaskNotifyFromISR(defaultTaskHandle, 0x04, eSetBits, &xHigherPriorityTaskWoken);
         // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }

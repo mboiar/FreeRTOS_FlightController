@@ -14,18 +14,56 @@
 #define MPU6050_ACCEL_FS 
 #define MPU6050_USER_CTRL 0x6A
 #define MPU6050_PWR_MGMT_1 0x6B
+#define MPU6050_PWR_MGMT_2 0x6C
 
+#define TIMEOUT 100
 
-uint8_t mpu_read_reg(uint8_t reg) {
-    uint8_t value = 0;
-    HAL_Delay(30);
-    if (HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, reg, 1, &value, sizeof(value), HAL_MAX_DELAY) != HAL_OK){
-      Error_Handler();
-    }
-    HAL_Delay(30);
-    return value;
+I2C_HandleTypeDef* hi2c = &hi2c1;
+
+HAL_StatusTypeDef mpu6050_read_reg(uint8_t reg, uint8_t* value) {
+    return HAL_I2C_Mem_Read(hi2c, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, value, sizeof(value), TIMEOUT);
 }
 
-HAL_StatusTypeDef mpu_heartbeat() {
-    return mpu_read_reg(MPU6050_WHO_AM_I) == MPU6050_ADDR ? HAL_OK : HAL_ERROR;
+HAL_StatusTypeDef mpu6050_write_reg(uint8_t reg, uint8_t value) {
+    return HAL_I2C_Mem_Write(hi2c, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &value, sizeof(value), TIMEOUT);
+}
+
+HAL_StatusTypeDef mpu6050_heartbeat() {
+    return HAL_I2C_IsDeviceReady(hi2c, MPU6050_ADDR << 1, 3, TIMEOUT);
+}
+
+HAL_StatusTypeDef mpu6050_read_reg_burst(uint8_t reg, uint16_t data_size, uint8_t* value) {
+    return HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, value, data_size, TIMEOUT);
+}
+
+HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
+    mpu6050_write_reg(MPU6050_PWR_MGMT_1, opt0);
+    return mpu6050_write_reg(MPU6050_PWR_MGMT_2, opt1);
+}
+
+HAL_StatusTypeDef mpu6050_read_data(mpu6050_out* val) {
+    uint8_t rx_data[14] = {0};
+    HAL_StatusTypeDef status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
+
+    val->accel_x = (rx_data[0]<<8) | rx_data[1];
+    val->accel_y = (rx_data[2]<<8) | rx_data[3];
+    val->accel_z = (rx_data[4]<<8) | rx_data[5];
+    val->gyro_x = (rx_data[6]<<8) | rx_data[7];
+    val->gyro_y = (rx_data[8]<<8) | rx_data[9];
+    val->gyro_z = (rx_data[10]<<8) | rx_data[11];
+    val->temp = (rx_data[12]<<8) | rx_data[13];
+
+    return status;
+}
+
+float mpu6050_calc_temp(int16_t raw_temp) {
+    return (float)raw_temp/340.0 + 36.53;
+}
+
+float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale) {
+    return (float)raw_accel / scale;
+}
+
+float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale) {
+    return (float)raw_gyro / scale;
 }
