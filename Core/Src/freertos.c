@@ -27,7 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "mpu6050.h"
 #include "bmp280.h"
-#include "flash_mem.h"
+#include "w25q64.h"
 
 #include "uart_logger.h"
 #include "controller.h"
@@ -167,39 +167,26 @@ void StartDefaultTask(void *argument)
   // Tone cur_tone;
   static UBaseType_t blocked = 1;
 
-  uint8_t resp[6] = {0};
-  uint8_t flashmem_device_id_val = 0, flashmem_manuf_id_val = 0;
-  flashmem_device_id(resp);
-  // ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+  device_info device_info;
+  w25q64_device_info(&device_info);
+  
+  status_registers status_bits;
+  w25q64_status(&status_bits);
+
+  uint8_t data[14] = {0x00, 0x00, 0x00, 0x00, 0x10, 0x11, 0x13, 0x16, 0x1A, 0xB4, 0xD3, 0xF1, 0xDD, 0xAA};
+  w25q64_page_program_IT(data, 14, 0x33);
   uint32_t ulNotifiedValue = 0;
-  BaseType_t xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
-  if (xResult == pdPASS) {
-    if ((ulNotifiedValue & 0x02) != 0) {
-      flashmem_manuf_id_val = resp[4];
-      flashmem_device_id_val = resp[5];
-    }
-  } else {
-    // FAIL
+  BaseType_t xResult;
+  // while ((ulNotifiedValue & 0x02) == 0) {
+    xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+  // }
+  bool busy = true;
+  while (busy) {
+    w25q64_isbusy(&busy);
+    vTaskDelay(pdMS_TO_TICKS(2));
   }
-  uint8_t status_bits[3] = {0};
-  flashmem_status(status_bits);
-  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
-  if ((ulNotifiedValue & 0x02) != 0) {
-
-  }
-  flashmem_sector_erase(0, SECTOR_ERASE_4K);
-  uint8_t data[15] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x02, 0x01, 0x01, 0x01, 0x08, 0x04, 0x02};
-  flashmem_page_program(data, 15, 0);
-  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
-  if ((ulNotifiedValue & 0x02) != 0) {
-
-  }
-  uint8_t data_rxtx[14] = {0};
-  flashmem_read_data(data_rxtx, 14, 0);
-  xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
-  if ((ulNotifiedValue & 0x02) != 0) {
-
-  }
+  uint8_t data_rxtx1[14] = {0};
+  w25q64_read_data(data_rxtx1, 14, 0x33);
 
   /* Infinite loop */
   for(;;) {
@@ -310,7 +297,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
   if (hspi == &hspi1) {
-    flashmem_transfer_done();
+    w25q64_transfer_done();
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
     // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
@@ -320,7 +307,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
   if (hspi == &hspi1) {
-    flashmem_transfer_done();
+    w25q64_transfer_done();
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
     // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
