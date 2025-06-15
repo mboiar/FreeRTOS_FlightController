@@ -2,25 +2,34 @@
 
 #include "stm32f4xx_hal.h"
 #include "usart.h"
-#include "stream_buffer.h"
+// #include "stream_buffer.h"
+// #include "stdlib.h"
 
-#define LOG_BUFFER_SIZE 10
+#define LOG_BUFFER_SIZE 42
 
-typedef struct {
-    uint8_t data[LOG_BUFFER_SIZE];
-    volatile uint16_t head;
-    volatile uint16_t tail;
-} LogBuffer;
+#define ACC_DP 1000000
+#define GYR_DP 1000000
 
-HAL_StatusTypeDef log_write(const uint8_t* pData, uint16_t size) {
-    return HAL_UART_Transmit_DMA(&huart1, pData, size);
+
+// typedef struct {
+//     uint32_t timestamp;
+//     uint16_t msg_len;
+//     uint8_t  payload[];
+// } __attribute__((packed)) log_entry_t;
+
+HAL_StatusTypeDef log_write_uart(const uint8_t* pData, uint16_t size) {
+    return HAL_UART_Transmit_IT(&huart1, pData, size);
 }
 
-int __io_putchar(int ch)
-{
-  if (ch == '\n') {
-    __io_putchar('\r');
-  }
-  log_write((uint8_t*)&ch, 1);
-  return 1;
+int16_t ftoi(float x, uint8_t dp) {
+    return (int16_t) (x*dp);
 }
+
+// int __io_putchar(int ch)
+// {
+//   if (ch == '\n') {
+//     __io_putchar('\r');
+//   }
+//   log_write((uint8_t*)&ch, 1);
+//   return 1;
+// }

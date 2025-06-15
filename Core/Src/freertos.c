@@ -28,11 +28,12 @@
 #include "mpu6050.h"
 #include "bmp280.h"
 #include "w25q64.h"
+#include "qmc5883.h"
 
 #include "uart_logger.h"
-#include "controller.h"
+//#include "controller.h"
 
-#include "stdio.h"
+//#include "stdio.h"
 #include "usart.h"
 #include "i2c.h"
 #include "string.h"
@@ -40,6 +41,8 @@
 //#include "melody.h"
 
 #include "limits.h"
+#include "queue.h"
+// #include "stdlib.h"
 
 /* USER CODE END Includes */
 
@@ -62,11 +65,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-osThreadId_t TaskMPUHandle;
-const osThreadAttr_t TaskMPU_attributes = {
-  .name = "TaskMPU",
+osThreadId_t TaskSensorHandle;
+const osThreadAttr_t TaskSensor_attributes = {
+  .name = "TaskSensor",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityHigh,
+  .priority = (osPriority_t) osPriorityHigh2,
 };
 
 osThreadId_t TaskFlightLoopHandle;
@@ -80,10 +83,16 @@ osThreadId_t TaskUARTLoggingHandle;
 const osThreadAttr_t TaskUARTLogging_attributes = {
   .name = "TaskUARTLogging",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityHigh1,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 const UBaseType_t xArrayIndex = 1;
+
+const size_t xQueueLen = 5;
+
+QueueHandle_t xLogQueue;
+uint8_t SensorDataBuffer[50] = {0};
+char DefaultTaskLog[50] = {0};
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -97,7 +106,7 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
-void TaskMPU(void *argument);
+void TaskSensor(void *argument);
 void TaskFlightLoop(void *argument);
 void TaskUARTLogging(void *argument);
 
@@ -130,7 +139,8 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+  xLogQueue = xQueueCreate(xQueueLen, LOG_BUFFER_SIZE);
+
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -138,9 +148,11 @@ void MX_FREERTOS_Init(void) {
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  TaskMPUHandle = osThreadNew(TaskMPU, NULL, &TaskMPU_attributes);
+  TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
   // TaskFlightLoopHandle = osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
-  // TaskUARTHandle = osThreadNew(TaskUARTLogging, NULL, &TaskUARTLogging_attributes);
+    if (xLogQueue != NULL) {
+        TaskUARTLoggingHandle = osThreadNew(TaskUARTLogging, NULL, &TaskUARTLogging_attributes);
+  }
 
   /* USER CODE END RTOS_THREADS */
 
@@ -181,15 +193,24 @@ void StartDefaultTask(void *argument)
   //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
   // }
   bool busy = true;
+  BaseType_t xStatus;
   while (busy) {
     w25q64_isbusy(&busy);
     vTaskDelay(pdMS_TO_TICKS(2));
   }
   uint8_t data_rxtx1[14] = {0};
   w25q64_read_data(data_rxtx1, 14, 0x33);
+  memcpy(DefaultTaskLog, "Default task is called here   \r\n", 33);
+
+  bool melody_completed = false;
+  vTaskSuspend(NULL);
 
   /* Infinite loop */
   for(;;) {
+    xStatus = xQueueSend(xLogQueue, DefaultTaskLog, 0);
+    if (xStatus != pdPASS) {
+        // handle queue fail
+    }
     // if (blocked) {
     //   // if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
     //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
@@ -209,22 +230,26 @@ void StartDefaultTask(void *argument)
     //     }
     //   }
     // }
-    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    // if(NoteIndex == 25){
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+
+    if(NoteIndex == 25){
     //   NoteIndex = 0;
-    // }
-    // int freq = hb_melody[NoteIndex];
-    // int dur = hb_durations[NoteIndex];
-    // // cur_tone = canon_melody[NoteIndex];
-    // if (freq > 0) {
-    //   TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
-    //   TIM1->CCR1 = (TIM1->ARR >> 1); // Set Duty Cycle 50%
-    // } else {
-    //   TIM1->CCR1 = 0;
-    // }
-    // NoteIndex++;
-    // vTaskDelay(pdMS_TO_TICKS(1000 / dur));
-    vTaskDelay(pdMS_TO_TICKS(200));
+        melody_completed = true;
+        // vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskSuspend(NULL);
+    } else {
+        int freq = 400;// melody[NoteIndex];
+        int dur = 2;//durations[NoteIndex];
+        // cur_tone = canon_melody[NoteIndex];
+        if (freq > 0) {
+        TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
+        TIM1->CCR1 = (TIM1->ARR >> 1); // Set Duty Cycle 50%
+        } else {
+        TIM1->CCR1 = 0;
+        }
+        NoteIndex++;
+        vTaskDelay(pdMS_TO_TICKS(1000 / dur));
+    }
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -237,49 +262,74 @@ void StartDefaultTask(void *argument)
  * @param argument: Not used
  * @retval None
  */
-void TaskMPU(void *argument) {
+void TaskSensor(void *argument) {
 
   I2C_Scan(&hi2c1);
 
   HAL_StatusTypeDef mpu_status = mpu6050_heartbeat();
-  mpu6050_set_power_options(CLKSEL_PLLX | MPU6050_CYCLE_BIT, LP_WAKE_40HZ);
+  mpu6050_set_power_options(CLKSEL_PLLX, 0);
+  mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN);
 
   mpu6050_out mpu6050_data;
-  mpu6050_read_data(&mpu6050_data);
-  float temp = mpu6050_calc_temp(mpu6050_data.temp);
-  accel_3d accel = {
-    .accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G),
-    .accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G),
-    .accel_z = mpu6050_calc_accel(mpu6050_data.accel_z, ACCEL_FS_2G)
-  };
-  gyro_3d gyro = {
-    .gyro_x = mpu6050_calc_accel(mpu6050_data.gyro_x, FS_SEL_250),
-    .gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250),
-    .gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250)
-  };
-
-  BMP_CONFIG_PARAMS conf_p = {
-    .filter_coef = 4,           // x16
-    .standby_time = 0,           // 0.5 ms
-    .spi3w_en = 0
-  };
-  BMP_CTRL_MEAS_PARAMS ctrl_p = {
-    .mode = BMP_FORCED,
-    .temp_oversampling = 1,     // x1
-    .pressure_oversampling = 3, // x4
-  };
+  accel_3d accel; gyro_3d gyro; float mpu_temp;
   BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
-  // if (bmp_init(&tp, &pp, ctrl_p, conf_p) == HAL_OK) {
-  //   printf("OK: BMP280");
-  // } else {
-  //   printf("Error: BMP280 Init failed");
-  // }
-  // osDelayUntil(100);
-  // float temp = 0, pressure = 0;
+  BaseType_t queue_status;
+
+  char SensorLog[LOG_BUFFER_SIZE] = {0};
+
+    BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {
+        .filter_coef = 4,           // x16
+        .standby_time = 0,           // 0.5 ms
+        .spi3w_en = 0
+    };
+
+    BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
+        .mode = BMP_NORMAL,
+        .temp_oversampling = 1,     // x1
+        .pressure_oversampling = 3, // x4
+    };
+  if (bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT) == HAL_OK) {
+    printf("OK: BMP280");
+  } else {
+    printf("Error: BMP280 Init failed");
+  }
+  float bmp_temp = 0, bmp_pressure = 0;
+
+  HAL_StatusTypeDef qmc_status = qmc5883_heartbeat();
+  qmc5883_set_config(QMC5883_CONTINUOUS | ODR_100HZ | RNG_2G | OSR_512);
+  qmc5883_set_ctrl(INT_DISABLE | ROL_PNT_NORMAL);
+  qmc5883_out qmc5883_data;
+
   for (;;) {
-  //   printf("TaskMPU");
-  //   bmp_acquire_data(&pressure, &temp, tp, pp);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    mpu6050_read_data(&mpu6050_data);                    // blocking ?
+    bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?
+    qmc5883_read_data(&qmc5883_data);
+
+    mpu_temp = mpu6050_calc_temp(mpu6050_data.temp);
+    accel.accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G);
+    accel.accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G);
+    accel.accel_z = mpu6050_calc_accel(mpu6050_data.accel_z, ACCEL_FS_2G);
+    gyro.gyro_x = mpu6050_calc_accel(mpu6050_data.gyro_x, FS_SEL_250);
+    gyro.gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250);
+    gyro.gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250);
+
+    TickType_t timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
+    memcpy(&SensorDataBuffer[0], &timestamp, 4);
+    memcpy(&SensorDataBuffer[4], &accel, 12);
+    memcpy(&SensorDataBuffer[16], &gyro, 12);
+    memcpy(&SensorDataBuffer[28], &mpu_temp, 4);
+    memcpy(&SensorDataBuffer[32], &bmp_temp, 4);
+    memcpy(&SensorDataBuffer[36], &bmp_pressure, 4);
+    // memcpy(&SensorDataBuffer[40], &qmc5883_data.MagX)
+
+    snprintf(SensorLog, sizeof(SensorLog), "%lu %d %d %d %d %d %d %d %d %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), mpu_temp, bmp_temp, bmp_pressure, qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ);
+    // snprintf(SensorLog, sizeof(SensorLog), "%lu %d %d.%03u %d.%03u gyro: %d.%03u %d.%03u %d.%03u Tmpu: %d Tbmp: %d P: %u\r\n", timestamp, (int16_t)accel.accel_x, (uint16_t)(abs((accel.accel_x-(int16_t)accel.accel_x)*1000)), (int16_t)accel.accel_y, (uint16_t)(abs((accel.accel_y-(int16_t)accel.accel_y)*1000)), (int16_t)accel.accel_z,  (uint16_t)(abs((accel.accel_z-(int16_t)accel.accel_z)*1000)), (int16_t)gyro.gyro_x, (uint16_t)(abs((gyro.gyro_x-(int16_t)gyro.gyro_x)*1000)), (int16_t)gyro.gyro_y, (uint16_t)(abs((gyro.gyro_y-(int16_t)gyro.gyro_y)*1000)), (int16_t)gyro.gyro_z,  (uint16_t)(abs((gyro.gyro_z-(int16_t)gyro.gyro_z)*1000)), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint16_t)bmp_pressure);
+
+    queue_status = xQueueSend(xLogQueue, SensorLog, 0);
+    // if (queue_status != pdPASS) {
+    //     // handle queue full
+    // }
+    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
@@ -289,9 +339,16 @@ void TaskMPU(void *argument) {
  * @retval None
  */
 void TaskUARTLogging(void *argument) {
-  for (;;) {
-
-  }
+    uint32_t ulNotifiedValue;
+    HAL_StatusTypeDef UARTStatus;
+    BaseType_t xQueueStatus;
+    BaseType_t xResult;
+    uint8_t LogMessage[LOG_BUFFER_SIZE];
+    for (;;) {
+        xQueueStatus = xQueueReceive( xLogQueue, LogMessage, portMAX_DELAY);
+        UARTStatus = log_write_uart(LogMessage, LOG_BUFFER_SIZE);
+        xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);  // Wait for UART tx to complete
+    }
 }
 
 /**
@@ -338,6 +395,14 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
     // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart) {
+    if (huart == &huart1) {
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xTaskNotifyFromISR(TaskUARTLoggingHandle, 0x01, eSetBits, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    }
 }
 /* USER CODE END Application */
 

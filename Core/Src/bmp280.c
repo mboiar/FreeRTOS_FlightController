@@ -78,12 +78,12 @@ HAL_StatusTypeDef bmp_init(BMP_CAL_T_PARAMS* tp, BMP_CAL_P_PARAMS* pp, const BMP
     return HAL_ERROR;
   }
 
-  bmp_reset();
-  HAL_Delay(10);
+  //bmp_reset();
+  // HAL_Delay(10);
   if (bmp_set_config(conf_p) != HAL_OK) {
     return HAL_ERROR;
   }
-  HAL_Delay(10);
+  // HAL_Delay(10);
   if (bmp_ctrl_meas(ctrl_p) != HAL_OK) {
     return HAL_ERROR;
   }
@@ -156,19 +156,19 @@ HAL_StatusTypeDef bmp_set_config(const BMP_CONFIG_PARAMS p) {
 }
 
 HAL_StatusTypeDef bmp_read_data_raw(BMP280_S32_t* press, BMP280_S32_t* temp) {
-  uint8_t data[6];
+  int8_t data[6];
   *press = 0;
   *temp = 0;
    if (bmp_read_reg_burst(BMP280_PRESS_MSB, 6, data) != HAL_OK) {
     return HAL_ERROR;
    }
-   *press = (data[0] << 16) | (data[1] << 8) | data[2];
-   *temp = (data[3] << 16) | (data[4] << 8) | data[5];
+   *press = (data[0] << 10) | (data[1] << 2) | (data[2] >> 6);  // 18 bit
+   *temp = (data[3] << 8) | (data[4] << 0) | (data[5] >> 8);  // 16 bit
    return HAL_OK;
 }
 
 HAL_StatusTypeDef bmp_read_calib_reg(BMP_CAL_T_PARAMS* tp, BMP_CAL_P_PARAMS* pp) {
-  uint8_t data[24];
+  int8_t data[24];
   if (bmp_read_reg_burst(BMP280_DIG_T1_LSB, 24, data) != HAL_OK) {
     return HAL_ERROR;
   }

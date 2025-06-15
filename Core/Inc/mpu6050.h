@@ -2,17 +2,24 @@
 
 #include "stm32f4xx.h"
 
-#define MPU6050_DEVICE_RESET_BIT 0x80
-#define MPU6050_SLEEP_BIT 0x40
-#define MPU6050_CYCLE_BIT 0x20
-#define MPU6050_TEMP_DIS_BIT 0x08
-#define MPU6050_DEVICE_RESET_BIT 0x80
-#define MPU6050_STBY_XA_BIT 0x20
-#define MPU6050_STBY_YA_BIT 0x10
-#define MPU6050_STBY_ZA_BIT 0x08
-#define MPU6050_STBY_XG_BIT 0x04
-#define MPU6050_STBY_YG_BIT 0x02
+#define MPU6050_DEVICE_RESET_BIT 0x01 << 7
+#define MPU6050_SLEEP_BIT 0x01 << 6
+#define MPU6050_CYCLE_BIT 0x01 << 5
+#define MPU6050_TEMP_DIS_BIT 0x01 << 3
+#define MPU6050_STBY_XA_BIT 0x01 << 5
+#define MPU6050_STBY_YA_BIT 0x01 << 4
+#define MPU6050_STBY_ZA_BIT 0x01 << 3
+#define MPU6050_STBY_XG_BIT 0x01 << 2
+#define MPU6050_STBY_YG_BIT 0x01 << 1
 #define MPU6050_STBY_ZG_BIT 0x01
+
+#define MPU6050_INT_LEVEL 0x01 << 7
+#define MPU6050_INT_OPEN 0x01 << 6
+#define MPU6050_I2C_BYPASS_EN 0x01 << 1
+#define MPU6050_DATA_RDY_EN 0x01
+
+#define MPU6050_FIFO_EN 0x01 << 6
+#define MPU6050_I2C_MST_EN 0x01 << 5
 
 
 typedef enum {
@@ -53,11 +60,11 @@ typedef struct {
 } mpu6050_out;
 
 typedef struct {
-    float accel_x, accel_y, accel_z
+    float accel_x, accel_y, accel_z;
 } accel_3d;
 
 typedef struct {
-    float gyro_x, gyro_y, gyro_z
+    float gyro_x, gyro_y, gyro_z;
 } gyro_3d;
 
 /* Read MPU6050 register in blocking mode */
@@ -80,3 +87,5 @@ float mpu6050_calc_temp(int16_t raw_temp);
 float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale);
 
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale);
+
+HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1);

@@ -51,6 +51,7 @@ typedef struct {
     short dig_P9;
 } BMP_CAL_P_PARAMS;
 
+
 /* Check BMP280 status*/
 HAL_StatusTypeDef bmp_heartbeat();
 

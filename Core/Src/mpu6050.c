@@ -15,8 +15,11 @@
 #define MPU6050_USER_CTRL 0x6A
 #define MPU6050_PWR_MGMT_1 0x6B
 #define MPU6050_PWR_MGMT_2 0x6C
+#define MPU6050_INT_PIN_CFG 0x37
+#define MPU6050_INT_ENABLE 0x38
 
 #define TIMEOUT 100
+
 
 I2C_HandleTypeDef* hi2c = &hi2c1;
 
@@ -42,7 +45,7 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
 }
 
 HAL_StatusTypeDef mpu6050_read_data(mpu6050_out* val) {
-    uint8_t rx_data[14] = {0};
+    int8_t rx_data[14] = {0};
     HAL_StatusTypeDef status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
 
     val->accel_x = (rx_data[0]<<8) | rx_data[1];
@@ -61,9 +64,37 @@ float mpu6050_calc_temp(int16_t raw_temp) {
 }
 
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale) {
-    return (float)raw_accel / scale;
+    return (float)raw_accel / (float)( 0x01 << (14 - scale) );
 }
 
 float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale) {
-    return (float)raw_gyro / scale;
+    float fscale = 1;
+    switch (scale) {
+    case FS_SEL_250:
+        fscale = 131.0;
+        break;
+    case FS_SEL_500:
+        fscale = 65.5;
+        break;
+    case FS_SEL_1000:
+        fscale = 32.8;
+        break;
+    case FS_SEL_2000:
+        fscale = 16.4;
+        break;
+    default:
+        break;
+    }
+    return (float)raw_gyro / fscale;
 }
+
+HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1) {
+    mpu6050_write_reg(MPU6050_INT_PIN_CFG, cfg0);
+    return mpu6050_write_reg(MPU6050_INT_ENABLE, cfg1);
+}
+
+
+HAL_StatusTypeDef mpu6050_user_ctrl(uint8_t ctrl) {
+    return mpu6050_write_reg(MPU6050_USER_CTRL, ctrl);
+}
+
