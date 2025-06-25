@@ -156,7 +156,7 @@ HAL_StatusTypeDef bmp_set_config(const BMP_CONFIG_PARAMS p) {
 }
 
 HAL_StatusTypeDef bmp_read_data_raw(BMP280_S32_t* press, BMP280_S32_t* temp) {
-  int8_t data[6];
+  uint8_t data[6];
   *press = 0;
   *temp = 0;
    if (bmp_read_reg_burst(BMP280_PRESS_MSB, 6, data) != HAL_OK) {
@@ -168,7 +168,7 @@ HAL_StatusTypeDef bmp_read_data_raw(BMP280_S32_t* press, BMP280_S32_t* temp) {
 }
 
 HAL_StatusTypeDef bmp_read_calib_reg(BMP_CAL_T_PARAMS* tp, BMP_CAL_P_PARAMS* pp) {
-  int8_t data[24];
+  uint8_t data[24];
   if (bmp_read_reg_burst(BMP280_DIG_T1_LSB, 24, data) != HAL_OK) {
     return HAL_ERROR;
   }

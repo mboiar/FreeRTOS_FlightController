@@ -2,7 +2,7 @@
 
 #define TIMEOUT 100
 
-I2C_HandleTypeDef* hi2c = &hi2c1;
+static I2C_HandleTypeDef* hi2c = &hi2c1;
 
 HAL_StatusTypeDef qmc5883_read_reg(uint8_t reg, uint8_t* value) {
     return HAL_I2C_Mem_Read(hi2c, QMC5883_ID_REG << 1, reg, I2C_MEMADD_SIZE_8BIT, value, sizeof(value), TIMEOUT);
@@ -21,7 +21,7 @@ HAL_StatusTypeDef qmc5883_read_reg_burst(uint8_t reg, uint16_t data_size, uint8_
 }
 
 HAL_StatusTypeDef qmc5883_read_data(qmc5883_out* val) {
-    int8_t rx_data[6] = {0};
+    uint8_t rx_data[6] = {0};
     HAL_StatusTypeDef status = qmc5883_read_reg_burst(QMC_5883_DATAX_LSB_REG, 6, rx_data);
     if (status == HAL_OK) {
         val->MagX = (rx_data[1]<<8) | rx_data[0];
@@ -57,4 +57,16 @@ HAL_StatusTypeDef qmc5883_status(uint8_t* status) {
 
 float qmc5883_data_convert(int16_t val) {
     return (float) val / 32768.0 * 2;
+}
+
+float qmc5883_get_heading(const qmc5883_out* data, float decl) {
+    float heading = atan2f((float)data->MagY, (float)data->MagX);
+    heading += decl;
+    if (heading < 0) {
+        heading += 2*M_PI;
+    }
+    if (heading > 2*M_PI) {
+        heading -= 2*M_PI;
+    }
+    return heading * 180 / M_PI;
 }

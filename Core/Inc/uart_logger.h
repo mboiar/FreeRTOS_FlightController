@@ -5,10 +5,10 @@
 // #include "stream_buffer.h"
 // #include "stdlib.h"
 
-#define LOG_BUFFER_SIZE 42
+#define LOG_BUFFER_SIZE 100
 
-#define ACC_DP 1000000
-#define GYR_DP 1000000
+#define ACC_DP 1000
+#define GYR_DP 1000
 
 
 // typedef struct {
@@ -21,8 +21,8 @@ HAL_StatusTypeDef log_write_uart(const uint8_t* pData, uint16_t size) {
     return HAL_UART_Transmit_IT(&huart1, pData, size);
 }
 
-int16_t ftoi(float x, uint8_t dp) {
-    return (int16_t) (x*dp);
+int32_t ftoi(float x, uint32_t dp) {
+    return (int32_t) (x*dp);
 }
 
 // int __io_putchar(int ch)

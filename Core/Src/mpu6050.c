@@ -21,7 +21,7 @@
 #define TIMEOUT 100
 
 
-I2C_HandleTypeDef* hi2c = &hi2c1;
+static I2C_HandleTypeDef* hi2c = &hi2c1;
 
 HAL_StatusTypeDef mpu6050_read_reg(uint8_t reg, uint8_t* value) {
     return HAL_I2C_Mem_Read(hi2c, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, value, sizeof(value), TIMEOUT);
@@ -45,7 +45,7 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
 }
 
 HAL_StatusTypeDef mpu6050_read_data(mpu6050_out* val) {
-    int8_t rx_data[14] = {0};
+    uint8_t rx_data[14] = {0};
     HAL_StatusTypeDef status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
 
     val->accel_x = (rx_data[0]<<8) | rx_data[1];

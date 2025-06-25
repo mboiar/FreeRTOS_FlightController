@@ -200,10 +200,10 @@ void StartDefaultTask(void *argument)
   }
   uint8_t data_rxtx1[14] = {0};
   w25q64_read_data(data_rxtx1, 14, 0x33);
-  memcpy(DefaultTaskLog, "Default task is called here   \r\n", 33);
+  // memcpy(DefaultTaskLog, "Default task is called here   \r\n", 33);
 
   bool melody_completed = false;
-  vTaskSuspend(NULL);
+  // vTaskSuspend(NULL);
 
   /* Infinite loop */
   for(;;) {
@@ -238,8 +238,8 @@ void StartDefaultTask(void *argument)
         // vTaskDelay(pdMS_TO_TICKS(2000));
         vTaskSuspend(NULL);
     } else {
-        int freq = 400;// melody[NoteIndex];
-        int dur = 2;//durations[NoteIndex];
+        int freq = 330;// melody[NoteIndex];
+        int dur = 4;//durations[NoteIndex];
         // cur_tone = canon_melody[NoteIndex];
         if (freq > 0) {
         TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
@@ -300,10 +300,14 @@ void TaskSensor(void *argument) {
   qmc5883_set_ctrl(INT_DISABLE | ROL_PNT_NORMAL);
   qmc5883_out qmc5883_data;
 
+  float heading = 0;
+
   for (;;) {
     mpu6050_read_data(&mpu6050_data);                    // blocking ?
     bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?
     qmc5883_read_data(&qmc5883_data);
+    heading = qmc5883_get_heading(&qmc5883_data, 108.8 / 1000.0);
+
 
     mpu_temp = mpu6050_calc_temp(mpu6050_data.temp);
     accel.accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G);
@@ -314,22 +318,14 @@ void TaskSensor(void *argument) {
     gyro.gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250);
 
     TickType_t timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
-    memcpy(&SensorDataBuffer[0], &timestamp, 4);
-    memcpy(&SensorDataBuffer[4], &accel, 12);
-    memcpy(&SensorDataBuffer[16], &gyro, 12);
-    memcpy(&SensorDataBuffer[28], &mpu_temp, 4);
-    memcpy(&SensorDataBuffer[32], &bmp_temp, 4);
-    memcpy(&SensorDataBuffer[36], &bmp_pressure, 4);
-    // memcpy(&SensorDataBuffer[40], &qmc5883_data.MagX)
 
-    snprintf(SensorLog, sizeof(SensorLog), "%lu %d %d %d %d %d %d %d %d %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), mpu_temp, bmp_temp, bmp_pressure, qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ);
-    // snprintf(SensorLog, sizeof(SensorLog), "%lu %d %d.%03u %d.%03u gyro: %d.%03u %d.%03u %d.%03u Tmpu: %d Tbmp: %d P: %u\r\n", timestamp, (int16_t)accel.accel_x, (uint16_t)(abs((accel.accel_x-(int16_t)accel.accel_x)*1000)), (int16_t)accel.accel_y, (uint16_t)(abs((accel.accel_y-(int16_t)accel.accel_y)*1000)), (int16_t)accel.accel_z,  (uint16_t)(abs((accel.accel_z-(int16_t)accel.accel_z)*1000)), (int16_t)gyro.gyro_x, (uint16_t)(abs((gyro.gyro_x-(int16_t)gyro.gyro_x)*1000)), (int16_t)gyro.gyro_y, (uint16_t)(abs((gyro.gyro_y-(int16_t)gyro.gyro_y)*1000)), (int16_t)gyro.gyro_z,  (uint16_t)(abs((gyro.gyro_z-(int16_t)gyro.gyro_z)*1000)), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint16_t)bmp_pressure);
+    snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)bmp_pressure, qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
 
     queue_status = xQueueSend(xLogQueue, SensorLog, 0);
     // if (queue_status != pdPASS) {
     //     // handle queue full
     // }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 

@@ -1,5 +1,7 @@
+#pragma once
 
 #include "i2c.h"
+#include "math.h"
 
 #define QMC5883_ID_REG 0x0D
 #define QMC_5883_DATAX_LSB_REG 0x00
@@ -97,3 +99,5 @@ HAL_StatusTypeDef qmc5883_reset();
 HAL_StatusTypeDef qmc5883_status();
 
 float qmc5883_data_convert(int16_t val);
+
+float qmc5883_get_heading(const qmc5883_out* data, float decl);
