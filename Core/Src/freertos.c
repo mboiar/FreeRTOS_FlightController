@@ -29,6 +29,8 @@
 #include "bmp280.h"
 #include "w25q64.h"
 #include "qmc5883.h"
+#include "l76.h"
+#include "motor_control.h"
 
 #include "uart_logger.h"
 //#include "controller.h"
@@ -288,24 +290,31 @@ void TaskSensor(void *argument) {
         .temp_oversampling = 1,     // x1
         .pressure_oversampling = 3, // x4
     };
-  if (bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT) == HAL_OK) {
-    printf("OK: BMP280");
-  } else {
-    printf("Error: BMP280 Init failed");
-  }
+  HAL_StatusTypeDef bmp_status = bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT);
   float bmp_temp = 0, bmp_pressure = 0;
 
+  // get reference pressure
+  bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);
+  const float p_ref = bmp_pressure;
+
+  // Configure QMC5883 magnetometer
   HAL_StatusTypeDef qmc_status = qmc5883_heartbeat();
   qmc5883_set_config(QMC5883_CONTINUOUS | ODR_100HZ | RNG_2G | OSR_512);
   qmc5883_set_ctrl(INT_DISABLE | ROL_PNT_NORMAL);
   qmc5883_out qmc5883_data;
 
-  float heading = 0;
+  // Redirect mag data to mpu6050 for sensor sync
+  mpu6050_set_master_ctrl(MPU6050_WAIT_FOR_ES);
+  mpu6050_set_config(0, MPU6050_DATA_RDY_EN);
+  mpu6050_user_ctrl(MPU6050_I2C_MST_EN);
+
+  float heading = 0, alt = 0;
 
   for (;;) {
-    mpu6050_read_data(&mpu6050_data);                    // blocking ?
+    mpu6050_read_data(&mpu6050_data, &qmc5883_data);                    // blocking ?
     bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?
-    qmc5883_read_data(&qmc5883_data);
+    alt = bmp280_get_altitude(bmp_pressure, p_ref, bmp_temp);
+    // qmc5883_read_data(&qmc5883_data);
     heading = qmc5883_get_heading(&qmc5883_data, 108.8 / 1000.0);
 
 
@@ -319,7 +328,7 @@ void TaskSensor(void *argument) {
 
     TickType_t timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
 
-    snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)bmp_pressure, qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
+    snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)(alt*100.0), qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
 
     queue_status = xQueueSend(xLogQueue, SensorLog, 0);
     // if (queue_status != pdPASS) {
