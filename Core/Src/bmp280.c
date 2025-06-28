@@ -2,6 +2,7 @@
 #include "i2c.h"
 #include "stdbool.h"
 #include "stdio.h"
+#include "math.h"
 
 // Register map
 #define BMP280_ID 0xD0
@@ -162,8 +163,8 @@ HAL_StatusTypeDef bmp_read_data_raw(BMP280_S32_t* press, BMP280_S32_t* temp) {
    if (bmp_read_reg_burst(BMP280_PRESS_MSB, 6, data) != HAL_OK) {
     return HAL_ERROR;
    }
-   *press = (data[0] << 10) | (data[1] << 2) | (data[2] >> 6);  // 18 bit
-   *temp = (data[3] << 8) | (data[4] << 0) | (data[5] >> 8);  // 16 bit
+   *press = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4);  // 20 bit
+   *temp = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4);  // 20 bit
    return HAL_OK;
 }
 
@@ -196,15 +197,20 @@ HAL_StatusTypeDef bmp_read_calib_reg(BMP_CAL_T_PARAMS* tp, BMP_CAL_P_PARAMS* pp)
 }
 
 HAL_StatusTypeDef bmp_acquire_data(float* press, float* temp, const BMP_CAL_T_PARAMS tp, const BMP_CAL_P_PARAMS pp) {
-  BMP280_S32_t temp_fixed, press_fixed;
+  BMP280_S32_t temp_fixed, press_fixed, T, p;
   if (bmp_read_data_raw(&press_fixed, &temp_fixed) != HAL_OK) {
     return HAL_ERROR;
   }
   BMP280_S32_t t_fine = 0;
-  bmp280_compensate_T_int32(temp_fixed, &t_fine, tp);
-  bmp280_compensate_P_int32(press_fixed, t_fine, pp);
-  *press = (float)press_fixed;
-  *temp = (float)temp_fixed / 100.0;
+  T = bmp280_compensate_T_int32(temp_fixed, &t_fine, tp);
+  p = bmp280_compensate_P_int32(press_fixed, t_fine, pp);
+  *press = (float)p;
+  *temp = (float)T / 100.0;
 
   return HAL_OK;
+}
+
+float bmp280_get_altitude(float p, float pref, float T) {
+  const float lapse_rate = 0.0065;
+  return (T+273.15 / lapse_rate) * (1.0 - powf(p / pref, 0.1903));
 }

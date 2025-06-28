@@ -75,3 +75,5 @@ HAL_StatusTypeDef bmp_read_calib_reg(BMP_CAL_T_PARAMS* tp, BMP_CAL_P_PARAMS* pp)
 
 /* Read temperature (*C) and pressure (Pa) from BMP280 sensor */
 HAL_StatusTypeDef bmp_acquire_data(float* press, float* temp, const BMP_CAL_T_PARAMS tp, const BMP_CAL_P_PARAMS pp);
+
+float bmp280_get_altitude(float p, float pref, float T);
