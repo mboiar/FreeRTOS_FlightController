@@ -1,5 +1,6 @@
 #pragma once
 
+#include "qmc5883.h"
 #include "stm32f4xx.h"
 
 #define MPU6050_DEVICE_RESET_BIT 0x01 << 7
@@ -21,6 +22,9 @@
 #define MPU6050_FIFO_EN 0x01 << 6
 #define MPU6050_I2C_MST_EN 0x01 << 5
 
+#define MPU6050_WAIT_FOR_ES 0x01 << 6
+
+// #define MPU6050_I2C_MST_N
 
 typedef enum {
     CLKSEL_INT = 0,
@@ -80,7 +84,7 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1);
 
 HAL_StatusTypeDef mpu6050_read_reg_burst(uint8_t reg, uint16_t data_size, uint8_t* value);
 
-HAL_StatusTypeDef mpu6050_read_data(mpu6050_out* val);
+HAL_StatusTypeDef mpu6050_read_data(mpu6050_out* val, qmc5883_out* mag_val);
 
 float mpu6050_calc_temp(int16_t raw_temp);
 
@@ -89,3 +93,11 @@ float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale);
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale);
 
 HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1);
+
+HAL_StatusTypeDef mpu6050_set_master_ctrl(uint8_t ctrl);
+
+HAL_StatusTypeDef mpu6050_i2c_master_status(uint8_t *status);
+
+HAL_StatusTypeDef mpu6050_user_ctrl(uint8_t ctrl);
+
+HAL_StatusTypeDef mpu6050_slv0_init();

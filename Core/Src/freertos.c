@@ -29,7 +29,7 @@
 #include "bmp280.h"
 #include "w25q64.h"
 #include "qmc5883.h"
-#include "l76.h"
+// #include "l76.h"
 #include "motor_control.h"
 
 #include "uart_logger.h"
@@ -74,6 +74,13 @@ const osThreadAttr_t TaskSensor_attributes = {
   .priority = (osPriority_t) osPriorityHigh2,
 };
 
+osThreadId_t TaskGPSHandle;
+const osThreadAttr_t TaskGPS_attributes = {
+  .name = "TaskGPS",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityHigh3,
+};
+
 osThreadId_t TaskFlightLoopHandle;
 const osThreadAttr_t TaskFlightLoop_attributes = {
   .name = "TaskFlightLoop",
@@ -96,6 +103,9 @@ QueueHandle_t xLogQueue;
 uint8_t SensorDataBuffer[50] = {0};
 char DefaultTaskLog[50] = {0};
 
+// uint8_t l76_buf[L76_MAX_BUF_SIZE] = {0};
+
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -111,6 +121,7 @@ const osThreadAttr_t defaultTask_attributes = {
 void TaskSensor(void *argument);
 void TaskFlightLoop(void *argument);
 void TaskUARTLogging(void *argument);
+void TaskGPS(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -151,6 +162,8 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
+  // TaskGPSHandle = osThreadNew(TaskGPS, NULL, &TaskGPS_attributes);
+
   // TaskFlightLoopHandle = osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
     if (xLogQueue != NULL) {
         TaskUARTLoggingHandle = osThreadNew(TaskUARTLogging, NULL, &TaskUARTLogging_attributes);
@@ -260,7 +273,7 @@ void StartDefaultTask(void *argument)
 /* USER CODE BEGIN Application */
 
 /**
- * @brief Task to handle MPU operations
+ * @brief Task to handle sensor operations
  * @param argument: Not used
  * @retval None
  */
@@ -308,16 +321,17 @@ void TaskSensor(void *argument) {
   mpu6050_set_config(0, MPU6050_DATA_RDY_EN);
   mpu6050_user_ctrl(MPU6050_I2C_MST_EN);
 
+  qmc_status = mpu6050_slv0_init();
+
   float heading = 0, alt = 0;
 
   for (;;) {
     mpu6050_read_data(&mpu6050_data, &qmc5883_data);                    // blocking ?
     bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?
+
     alt = bmp280_get_altitude(bmp_pressure, p_ref, bmp_temp);
     // qmc5883_read_data(&qmc5883_data);
     heading = qmc5883_get_heading(&qmc5883_data, 108.8 / 1000.0);
-
-
     mpu_temp = mpu6050_calc_temp(mpu6050_data.temp);
     accel.accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G);
     accel.accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G);
@@ -337,6 +351,26 @@ void TaskSensor(void *argument) {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
+
+
+// /**
+//  * @brief Task to handle GPS operations
+//  * @param argument: Not used
+//  * @retval None
+//  */
+// void TaskGPS(void *argument) {
+//   HAL_StatusTypeDef l76_status = l76_cold_start();
+//   vTaskDelay(pdMS_TO_TICKS(1000));
+
+//   l76_status = l76_q_release(l76_buf);
+
+//   l76_status = l76_set_rate(1000, l76_buf);
+
+//   for (;;) {
+//     l76_receive(l76_buf, 256);
+//     vTaskDelay(pdMS_TO_TICKS(500));
+//   }
+// }
 
 /**
  * @brief Logs telemetry to serial port
