@@ -57,6 +57,7 @@ void TIM2_IRQHandler(void);
 void I2C1_EV_IRQHandler(void);
 void SPI1_IRQHandler(void);
 void USART1_IRQHandler(void);
+void USART2_IRQHandler(void);
 void DMA2_Stream0_IRQHandler(void);
 void DMA2_Stream2_IRQHandler(void);
 void DMA2_Stream5_IRQHandler(void);
