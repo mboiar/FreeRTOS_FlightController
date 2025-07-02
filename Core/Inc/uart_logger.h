@@ -5,7 +5,7 @@
 // #include "stream_buffer.h"
 // #include "stdlib.h"
 
-#define LOG_BUFFER_SIZE 100
+#define LOG_BUFFER_SIZE 256
 
 #define ACC_DP 1000
 #define GYR_DP 1000

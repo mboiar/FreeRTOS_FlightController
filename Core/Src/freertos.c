@@ -31,6 +31,7 @@
 #include "qmc5883.h"
 // #include "l76.h"
 #include "motor_control.h"
+#include "logger.h"
 
 #include "uart_logger.h"
 //#include "controller.h"
@@ -51,7 +52,14 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-
+typedef struct {
+  accel_3d accel;
+  gyro_3d gyro;
+  float heading;
+  float alt;
+  TickType_t timestamp;
+  int16_t bmp_temp;
+} sensor_data_t;
 
 /* USER CODE END PTD */
 
@@ -100,7 +108,7 @@ const UBaseType_t xArrayIndex = 1;
 const size_t xQueueLen = 5;
 
 QueueHandle_t xLogQueue;
-uint8_t SensorDataBuffer[50] = {0};
+uint8_t SensorDataBuffer[BUFFER_SIZE] = {0};
 char DefaultTaskLog[50] = {0};
 
 // uint8_t l76_buf[L76_MAX_BUF_SIZE] = {0};
@@ -121,7 +129,6 @@ const osThreadAttr_t defaultTask_attributes = {
 void TaskSensor(void *argument);
 void TaskFlightLoop(void *argument);
 void TaskUARTLogging(void *argument);
-void TaskGPS(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -162,7 +169,6 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
-  // TaskGPSHandle = osThreadNew(TaskGPS, NULL, &TaskGPS_attributes);
 
   // TaskFlightLoopHandle = osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
     if (xLogQueue != NULL) {
@@ -286,7 +292,7 @@ void TaskSensor(void *argument) {
   mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN);
 
   mpu6050_out mpu6050_data;
-  accel_3d accel; gyro_3d gyro; float mpu_temp;
+  float mpu_temp;
   BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
   BaseType_t queue_status;
 
@@ -323,28 +329,31 @@ void TaskSensor(void *argument) {
 
   qmc_status = mpu6050_slv0_init();
 
-  float heading = 0, alt = 0;
+  sensor_data_t sdata;
 
   for (;;) {
-    mpu6050_read_data(&mpu6050_data, &qmc5883_data);                    // blocking ?
-    bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?
+    mpu6050_read_data(&mpu6050_data, &qmc5883_data);                    // blocking ? TODO
+    bmp_acquire_data(&bmp_pressure, &bmp_temp, tp, pp);  // blocking ?                TODO
 
-    alt = bmp280_get_altitude(bmp_pressure, p_ref, bmp_temp);
+    sdata.alt = bmp280_get_altitude(bmp_pressure, p_ref, sdata.bmp_temp);
     // qmc5883_read_data(&qmc5883_data);
-    heading = qmc5883_get_heading(&qmc5883_data, 108.8 / 1000.0);
+    sdata.heading = qmc5883_get_heading(&qmc5883_data, 108.8 / 1000.0);
     mpu_temp = mpu6050_calc_temp(mpu6050_data.temp);
-    accel.accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G);
-    accel.accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G);
-    accel.accel_z = mpu6050_calc_accel(mpu6050_data.accel_z, ACCEL_FS_2G);
-    gyro.gyro_x = mpu6050_calc_accel(mpu6050_data.gyro_x, FS_SEL_250);
-    gyro.gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250);
-    gyro.gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250);
+    sdata.accel.accel_x = mpu6050_calc_accel(mpu6050_data.accel_x, ACCEL_FS_2G);
+    sdata.accel.accel_y = mpu6050_calc_accel(mpu6050_data.accel_y, ACCEL_FS_2G);
+    sdata.accel.accel_z = mpu6050_calc_accel(mpu6050_data.accel_z, ACCEL_FS_2G);
+    sdata.gyro.gyro_x = mpu6050_calc_accel(mpu6050_data.gyro_x, FS_SEL_250);
+    sdata.gyro.gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250);
+    sdata.gyro.gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250);
 
-    TickType_t timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
+    sdata.timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
 
-    snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)(alt*100.0), qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
 
-    queue_status = xQueueSend(xLogQueue, SensorLog, 0);
+    // snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)(alt*100.0), qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
+    SensorLog[0] = sizeof(sdata);
+    SensorLog[1] = DATA_SENSORS;
+    memcpy(SensorLog+2, &sdata, sizeof(sdata));
+    queue_status = xQueueSend(xLogQueue, &SensorLog, 0);
     // if (queue_status != pdPASS) {
     //     // handle queue full
     // }
@@ -352,25 +361,6 @@ void TaskSensor(void *argument) {
   }
 }
 
-
-// /**
-//  * @brief Task to handle GPS operations
-//  * @param argument: Not used
-//  * @retval None
-//  */
-// void TaskGPS(void *argument) {
-//   HAL_StatusTypeDef l76_status = l76_cold_start();
-//   vTaskDelay(pdMS_TO_TICKS(1000));
-
-//   l76_status = l76_q_release(l76_buf);
-
-//   l76_status = l76_set_rate(1000, l76_buf);
-
-//   for (;;) {
-//     l76_receive(l76_buf, 256);
-//     vTaskDelay(pdMS_TO_TICKS(500));
-//   }
-// }
 
 /**
  * @brief Logs telemetry to serial port
@@ -382,11 +372,21 @@ void TaskUARTLogging(void *argument) {
     HAL_StatusTypeDef UARTStatus;
     BaseType_t xQueueStatus;
     BaseType_t xResult;
-    uint8_t LogMessage[LOG_BUFFER_SIZE];
+    uint8_t data_buf[LOG_BUFFER_SIZE];
+    uint8_t packet[PACKET_SIZE];
+    size_t length;
     for (;;) {
-        xQueueStatus = xQueueReceive( xLogQueue, LogMessage, portMAX_DELAY);
-        UARTStatus = log_write_uart(LogMessage, LOG_BUFFER_SIZE);
-        xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);  // Wait for UART tx to complete
+        xQueueStatus = xQueueReceive( xLogQueue, data_buf, portMAX_DELAY);
+        length = data_buf[0];
+        packet[0] = '$';
+        packet[1] = data_buf[1];
+        packet[30] = '\r';
+        packet[31] = '\n';
+        for (size_t i=0; i<length; i+=PACKET_SIZE-4) {
+          memcpy(packet+2, data_buf+i+2, 28);
+          UARTStatus = log_write_uart(packet, PACKET_SIZE);
+          xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);  // Wait for UART tx to complete
+        }
     }
 }
 
