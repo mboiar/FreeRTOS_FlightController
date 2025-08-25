@@ -3,7 +3,7 @@
 
 
 #define BUFFER_SIZE 256
-#define PACKET_SIZE 32
+#define PACKET_SIZE 128
 
 typedef enum {
     MSG_DEBUG,
@@ -11,6 +11,7 @@ typedef enum {
     MSG_ERROR,
     MSG_CRITICAL,
     DATA_SENSORS,
+    DATA_DEBUG,
     DATA_CTRL
 } LOG_TYPE;
 

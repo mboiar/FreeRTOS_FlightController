@@ -61,6 +61,7 @@ extern DMA_HandleTypeDef hdma_spi1_tx;
 extern SPI_HandleTypeDef hspi1;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern DMA_HandleTypeDef hdma_usart1_rx;
+extern DMA_HandleTypeDef hdma_usart2_rx;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern TIM_HandleTypeDef htim2;
@@ -182,6 +183,20 @@ void EXTI0_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles DMA1 stream5 global interrupt.
+  */
+void DMA1_Stream5_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Stream5_IRQn 0 */
+
+  /* USER CODE END DMA1_Stream5_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_rx);
+  /* USER CODE BEGIN DMA1_Stream5_IRQn 1 */
+
+  /* USER CODE END DMA1_Stream5_IRQn 1 */
+}
+
+/**
   * @brief This function handles TIM2 global interrupt.
   */
 void TIM2_IRQHandler(void)
@@ -191,7 +206,6 @@ void TIM2_IRQHandler(void)
   /* USER CODE END TIM2_IRQn 0 */
   HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
-
   /* USER CODE END TIM2_IRQn 1 */
 }
 
@@ -244,6 +258,13 @@ void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
 
+  // Handle Idle Interrupt manually
+  // if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) &&
+  //       __HAL_UART_GET_IT_SOURCE(&huart2, UART_IT_IDLE)) {
+  //       __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+  //       size_t npos = DMA_RX_LEN - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+  //       radio_dma_to_buffer(npos);
+  //   }
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
