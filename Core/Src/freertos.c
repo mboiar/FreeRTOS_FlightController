@@ -33,7 +33,7 @@
 #include "motor_control.h"
 #include "logger.h"
 
-#include "uart_logger.h"
+// #include "uart_logger.h"
 //#include "controller.h"
 
 //#include "stdio.h"
@@ -63,6 +63,13 @@ typedef struct {
   float bmp_temp;
 } sensor_data_t;
 
+typedef struct {
+  uint8_t sysid;
+  mavlink_control_system_state_t ctrl_sys_state;
+  uint8_t mode;
+  uint8_t sys_status;
+} state_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -83,6 +90,14 @@ const osThreadAttr_t TaskSensor_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityHigh2,
 };
+
+osThreadId_t TaskTelemetryHandle;
+const osThreadAttr_t TaskTelemetry_attributes = {
+  .name = "TaskTelemetry",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
 
 osThreadId_t TaskRadioRXHandle;
 const osThreadAttr_t TaskRadioRX_attributes = {
@@ -118,10 +133,12 @@ static size_t radio_rx_dma_pos = 0;
 // Logging
 QueueHandle_t xLogQueue;
 uint8_t SensorDataBuffer[BUFFER_SIZE] = {0};
-char DefaultTaskLog[BUFFER_SIZE] = {0};
-
+static char DefaultTaskLog[BUFFER_SIZE] = {0};
 static char RadioRXLog[BUFFER_SIZE] = {0};
+static char TelemetryLog[BUFFER_SIZE] = {0};
 
+// Global system state
+static state_t state;
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -139,6 +156,7 @@ void TaskSensor(void *argument);
 void TaskFlightLoop(void *argument);
 void TaskUARTLogging(void *argument);
 void TaskRadioRX(void *arg);
+void TaskTelemetry(void *arg);
 
 static void radio_dma_to_buffer(size_t now);
 
@@ -173,6 +191,8 @@ return TIM2->CNT;
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
   crsfStream = xStreamBufferCreate(256, 20);
+
+  state.sysid = 1;
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -188,7 +208,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  xLogQueue = xQueueCreate(xQueueLen, LOG_BUFFER_SIZE);
+  xLogQueue = xQueueCreate(xQueueLen, BUFFER_SIZE);
 
   /* USER CODE END RTOS_QUEUES */
 
@@ -199,6 +219,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
   TaskRadioRXHandle = osThreadNew(TaskRadioRX, NULL, &TaskRadioRX_attributes);
+  TaskTelemetryHandle = osThreadNew(TaskTelemetry, NULL, &TaskTelemetry_attributes);
 
   // TaskFlightLoopHandle = osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
     if (xLogQueue != NULL) {
@@ -243,15 +264,13 @@ void StartDefaultTask(void *argument)
   uint32_t ulNotifiedValue = 0;
   BaseType_t xResult;
   BaseType_t xStatus;
-
+  mavlink_message_t msg;
 
   /* Infinite loop */
   for(;;) {
-    memset(DefaultTaskLog, 0, BUFFER_SIZE);
-    DefaultTaskLog[0] = 19;
-    DefaultTaskLog[1] = MSG_DEBUG;
-    snprintf(DefaultTaskLog+2, 17, "[Default] Called");
-    xStatus = xQueueSend(xLogQueue, DefaultTaskLog, 0);
+    // memset(DefaultTaskLog, 0, BUFFER_SIZE);
+    mavlink_log(MAV_SEVERITY_INFO, &msg, DefaultTaskLog, "[Default] Called");
+    xStatus = xQueueSend(xLogQueue, &msg, 0);
     if (xStatus != pdPASS) {
         // handle queue fail
     }
@@ -319,7 +338,7 @@ void TaskSensor(void *argument) {
   BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
   BaseType_t queue_status;
 
-  char SensorLog[LOG_BUFFER_SIZE] = {0};
+  char SensorLog[BUFFER_SIZE] = {0};
 
     BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {
         .filter_coef = 4,           // x16
@@ -403,7 +422,7 @@ void TaskSensor(void *argument) {
 
 
 /**
- * @brief Logs telemetry to serial port
+ * @brief Logs messages to serial port
  * @param argument: Not used
  * @retval None
  */
@@ -412,26 +431,56 @@ void TaskUARTLogging(void *argument) {
     HAL_StatusTypeDef UARTStatus;
     BaseType_t xQueueStatus;
     BaseType_t xResult;
-    uint8_t data_buf[LOG_BUFFER_SIZE] = {0};
+    uint8_t data_buf[BUFFER_SIZE] = {0};
     uint8_t packet[PACKET_SIZE] = {0};
     size_t length;
     TickType_t timestamp;
+    mavlink_message_t msg;
     for (;;) {
-        memset(data_buf, 0, sizeof(data_buf));
-        xQueueStatus = xQueueReceive( xLogQueue, data_buf, portMAX_DELAY);
-        timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
-        length = data_buf[0];
-        packet[0] = 0x24;
-        packet[1] = 0x55;
-        packet[2] = data_buf[1]; // TYPE
-        size_t len = snprintf(packet+3, PACKET_SIZE, " %lu ", timestamp);
-        packet[PACKET_SIZE-2] = '\r';
-        packet[PACKET_SIZE-1] = '\n';
-        for (size_t i=0; i<length; i+=PACKET_SIZE-6-len) {
-          memcpy(packet+4+len, data_buf+i+2, PACKET_SIZE-6-len);
-          UARTStatus = HAL_UART_Transmit_DMA(&huart1, packet, PACKET_SIZE);
-          xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);  // Wait for UART tx to complete
-        }
+        // memset(data_buf, 0, sizeof(data_buf));
+        xQueueStatus = xQueueReceive( xLogQueue, &msg, portMAX_DELAY);
+        length = mavlink_msg_to_send_buffer(data_buf, &msg);
+        UARTStatus = HAL_UART_Transmit_DMA(&huart1, data_buf, length);
+        // timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
+        // length = data_buf[0];
+        // packet[0] = 0x24;
+        // packet[1] = 0x55;
+        // packet[2] = data_buf[1]; // TYPE
+        // size_t len = snprintf(packet+3, PACKET_SIZE, " %lu ", timestamp);
+        // packet[PACKET_SIZE-2] = '\r';
+        // packet[PACKET_SIZE-1] = '\n';
+        // for (size_t i=0; i<length; i+=PACKET_SIZE-6-len) {
+        //   memcpy(packet+4+len, data_buf+i+2, PACKET_SIZE-6-len);
+        //   UARTStatus = HAL_UART_Transmit_DMA(&huart1, packet, PACKET_SIZE);
+        //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);  // Wait for UART tx to complete
+        // }
+    }
+}
+
+
+/**
+ * @brief Sends telemetry
+ * @param argument: Not used
+ * @retval None
+ */
+void TaskTelemetry(void *argument) {
+    BaseType_t xQueueStatus;
+    BaseType_t xResult;
+    mavlink_message_t msg;
+
+    for (;;) {
+      mavlink_msg_heartbeat_pack(
+        1,
+        MAV_COMP_ID_AUTOPILOT1,
+        &msg,
+        MAV_TYPE_QUADROTOR,
+        MAV_AUTOPILOT_GENERIC,
+        MAV_MODE_FLAG_MANUAL_INPUT_ENABLED,
+        0,
+        MAV_STATE_ACTIVE
+      );
+      BaseType_t queue_status = xQueueSend(xLogQueue, &msg, 0);
+      vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
@@ -459,6 +508,7 @@ void TaskRadioRX(void *argument) {
   uint8_t rx_buf[64];
   crsf_rc_t rc_data;
 
+  mavlink_message_t msg;
 
   // Begin receiving rc data in circular mode
   if (HAL_UART_Receive_DMA(&huart2, radio_rx_buf, DMA_RX_LEN) != HAL_OK) {
@@ -468,11 +518,8 @@ void TaskRadioRX(void *argument) {
   for (;;) {
     size_t n = xStreamBufferReceive(crsfStream, &rx_buf, sizeof(rx_buf), pdMS_TO_TICKS(200));
     if (n==0) {
-      memset(RadioRXLog, 0, BUFFER_SIZE);
-      RadioRXLog[0] = 18;
-      RadioRXLog[1] = MSG_ERROR;
-      snprintf(RadioRXLog+2, 16, "[Radio] No data");
-      BaseType_t xStatus = xQueueSend(xLogQueue, RadioRXLog, 0);
+      mavlink_log(MAV_SEVERITY_WARNING, &msg, "[Radio] No data");
+      BaseType_t xStatus = xQueueSend(xLogQueue, &msg, 0);
     } else {
       for (size_t i = 0; i<n; i++) {
             if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
@@ -494,7 +541,7 @@ void TaskRadioRX(void *argument) {
               }
               RadioRXLog[0] = len;
               RadioRXLog[1] = DATA_CTRL;
-              BaseType_t queue_status = xQueueSend(xLogQueue, &RadioRXLog, 0);
+              // BaseType_t queue_status = xQueueSend(xLogQueue, &RadioRXLog, 0);
             }
           }
     }
