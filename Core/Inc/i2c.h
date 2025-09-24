@@ -29,7 +29,7 @@ extern "C" {
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
-#include "stdio.h"
+
 /* USER CODE END Includes */
 
 extern I2C_HandleTypeDef hi2c1;
@@ -41,13 +41,6 @@ extern I2C_HandleTypeDef hi2c1;
 void MX_I2C1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-
-/**
- * @brief Lists available I2C devices
- * @param hi2c i2c handle
- * @retval None
- */
-void I2C_Scan(I2C_HandleTypeDef *hi2c);
 
 /* USER CODE END Prototypes */
 
