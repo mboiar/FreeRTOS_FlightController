@@ -25,9 +25,9 @@
 .cproject
 .project
 .settings/
-.mxproject
-
 .vscode/
+
+.mxproject
 
 # CMake build directories
 build/

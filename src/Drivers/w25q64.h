@@ -3,6 +3,8 @@
 #include "spi.h"
 #include "gpio.h"
 #include "stdbool.h"
+#include "freeRTOS.h"
+#include "task.h"
 
 typedef enum {
   TRANSFER_WAIT,
@@ -144,3 +146,7 @@ HAL_StatusTypeDef w25q64_read_data_DMA(uint8_t* data_rxtx, uint16_t size, uint32
   * @retval HAL_StatusTypeDef
   */
 HAL_StatusTypeDef w25q64_write(uint8_t* data, uint16_t size, uint32_t page, uint16_t offset);
+
+void Flash_SPI_TxCpltHanlder();
+
+void Flash_SPI_TxRxCpltHandler();

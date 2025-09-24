@@ -6,7 +6,6 @@
 #pragma once
 
 #include "stm32f4xx_hal.h"
-#include "usart.h"
 #include "string.h"
 
 #define CRSF_TYPE_RC 0x16
@@ -50,15 +49,6 @@ uint8_t crc8(const uint8_t * ptr, uint8_t len) {
         crc = crc8tab[crc ^ *ptr++];
     return crc;
 }
-
-
-// HAL_StatusTypeDef radio_write(const uint8_t* pData, uint16_t size) {
-//     return HAL_UART_Transmit_IT(&huart2, pData, size);
-// }
-
-// HAL_StatusTypeDef radio_read(uint8_t* pData, uint16_t size) {
-//     return HAL_UART_Receive_IT(&huart2, pData, size);
-// }
 
 typedef struct {
     uint8_t addr, len, type;

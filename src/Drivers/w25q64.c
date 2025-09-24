@@ -146,3 +146,19 @@ HAL_StatusTypeDef w25q64_status(status_registers* status_bits) {
     status_bits->REG2 = txrx[5];
     return status;
 }
+
+void Flash_SPI_TxCpltHanlder() {
+    w25q64_transfer_done();
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
+    // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void Flash_SPI_TxRxCpltHandler() {
+    w25q64_transfer_done();
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(defaultTaskHandle, 0x02, eSetBits, &xHigherPriorityTaskWoken);
+    // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}

@@ -7,6 +7,8 @@ cmake_minimum_required(VERSION 3.22)
 # User is free to modify the file as much as necessary
 #
 
+set(SOFTWARE_SRC_PATH src)
+
 # Setup compiler settings
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -45,17 +47,21 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
+file(GLOB_RECURSE SOFTWARE_SRC "${SOFTWARE_SRC_PATH}/*.*")
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Core/Src/mpu6050.c
-    Core/Src/bmp280.c
-    Core/Src/w25q64.c
-    Core/Src/qmc5883.c
+    ${SOFTWARE_SRC}
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    ${SOFTWARE_SRC_PATH}
+    # ${SOFTWARE_SRC_PATH}/Drivers/mavlink/v2.0
+    ${SOFTWARE_SRC_PATH}/Drivers
+    ${SOFTWARE_SRC_PATH}/Tasks
+    ${SOFTWARE_SRC_PATH}/Core
 )
 
 # Add project symbols (macros)
