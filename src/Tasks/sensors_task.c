@@ -1,10 +1,8 @@
-#include "sensors_task.h"
-#include "mpu6050.h"
+#include "Tasks.h"
 #include "bmp280.h"
+#include "mpu6050.h"
 #include "qmc5883.h"
 #include "utils.h"
-#include "logging_task.h"
-#include "FreeRTOS.h"
 
 typedef struct {
   accel_3d accel;
@@ -16,7 +14,6 @@ typedef struct {
 } sensor_data_t;
 
 static uint8_t SensorDataBuffer[BUFFER_SIZE] = {0};
-
 
 /**
  * @brief Task to handle sensor operations
@@ -33,23 +30,23 @@ void TaskSensor(void *argument) {
 
   mpu6050_out mpu6050_data;
   float mpu_temp;
-  BMP_CAL_T_PARAMS tp; BMP_CAL_P_PARAMS pp;
+  BMP_CAL_T_PARAMS tp;
+  BMP_CAL_P_PARAMS pp;
   BaseType_t queue_status;
 
   char SensorLog[BUFFER_SIZE] = {0};
 
-    BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {
-        .filter_coef = 4,           // x16
-        .standby_time = 0,           // 0.5 ms
-        .spi3w_en = 0
-    };
+  BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
+                                             .standby_time = 0, // 0.5 ms
+                                             .spi3w_en = 0};
 
-    BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
-        .mode = BMP_NORMAL,
-        .temp_oversampling = 1,     // x1
-        .pressure_oversampling = 3, // x4
-    };
-  HAL_StatusTypeDef bmp_status = bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT);
+  BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
+      .mode = BMP_NORMAL,
+      .temp_oversampling = 1,     // x1
+      .pressure_oversampling = 3, // x4
+  };
+  HAL_StatusTypeDef bmp_status =
+      bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT);
   float bmp_temp = 0, bmp_pressure = 0;
 
   // get reference pressure
@@ -76,8 +73,9 @@ void TaskSensor(void *argument) {
   static char Buffer[512];
 
   for (;;) {
-    mpu6050_read_data(&mpu6050_data, &qmc5883_data);                    // blocking ? TODO
-    bmp_acquire_data(&bmp_pressure, &(sdata.bmp_temp), tp, pp);  // blocking ?                TODO
+    mpu6050_read_data(&mpu6050_data, &qmc5883_data); // blocking ? TODO
+    bmp_acquire_data(&bmp_pressure, &(sdata.bmp_temp), tp,
+                     pp); // blocking ?                TODO
 
     sdata.alt = bmp280_get_altitude(bmp_pressure, p_ref, sdata.bmp_temp);
     // qmc5883_read_data(&qmc5883_data);
@@ -90,13 +88,15 @@ void TaskSensor(void *argument) {
     sdata.gyro.gyro_y = mpu6050_calc_accel(mpu6050_data.gyro_y, FS_SEL_250);
     sdata.gyro.gyro_z = mpu6050_calc_accel(mpu6050_data.gyro_z, FS_SEL_250);
 
-
-
-    // // snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP), ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP), ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z, GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)(alt*100.0), qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ, (int16_t)heading);
-    // SensorLog[0] = sizeof(sdata);
-    // SensorLog[1] = DATA_SENSORS;
-    // memcpy(SensorLog+2, &sdata, sizeof(sdata));
-    // queue_status = xQueueSend(xLogQueue, &SensorLog, 0);
+    // // snprintf(SensorLog, sizeof(SensorLog), "%lu %ld %ld %ld %ld %ld %ld %d
+    // %d %lu %d %d %d %d\r\n", timestamp, ftoi(accel.accel_x, ACC_DP),
+    // ftoi(accel.accel_y, ACC_DP), ftoi(accel.accel_z, ACC_DP),
+    // ftoi(gyro.gyro_x, GYR_DP), ftoi(gyro.gyro_y, GYR_DP), ftoi(gyro.gyro_z,
+    // GYR_DP), (int16_t)mpu_temp, (int16_t)bmp_temp, (uint32_t)(alt*100.0),
+    // qmc5883_data.MagX, qmc5883_data.MagY, qmc5883_data.MagZ,
+    // (int16_t)heading); SensorLog[0] = sizeof(sdata); SensorLog[1] =
+    // DATA_SENSORS; memcpy(SensorLog+2, &sdata, sizeof(sdata)); queue_status =
+    // xQueueSend(xLogQueue, &SensorLog, 0);
 
     // SensorLog[0] = 12;
     // SensorLog[1] = DATA_DEBUG;

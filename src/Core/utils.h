@@ -2,7 +2,6 @@
 
 #include "i2c.h"
 
-
 /**
  * @brief Lists available I2C devices
  * @param hi2c i2c handle

@@ -58,7 +58,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${SOFTWARE_SRC_PATH}
-    # ${SOFTWARE_SRC_PATH}/Drivers/mavlink/v2.0
+    ${SOFTWARE_SRC_PATH}/Drivers/mavlink/v2.0
     ${SOFTWARE_SRC_PATH}/Drivers
     ${SOFTWARE_SRC_PATH}/Tasks
     ${SOFTWARE_SRC_PATH}/Core
@@ -75,3 +75,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wno-address-of-packed-member)

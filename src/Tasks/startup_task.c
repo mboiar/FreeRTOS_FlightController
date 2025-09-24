@@ -1,7 +1,5 @@
-#include "startup_task.h"
-#include "task.h"
+#include "Tasks.h"
 #include "w25q64.h"
-#include "logging_task.h"
 
 static char DefaultTaskLog[BUFFER_SIZE] = {0};
 
@@ -27,13 +25,11 @@ void StartupTask(void *argument) {
   uint32_t ulNotifiedValue = 0;
   BaseType_t xResult;
   BaseType_t xStatus;
-  mavlink_message_t msg;
 
   /* Infinite loop */
   for (;;) {
     // memset(DefaultTaskLog, 0, BUFFER_SIZE);
-    mavlink_log(MAV_SEVERITY_INFO, &msg, DefaultTaskLog, "[Default] Called");
-    LOG_INFO(&msg);
+    LOG_INFO("[Default] Called");
     if (xStatus != pdPASS) {
       // handle queue fail
     }
