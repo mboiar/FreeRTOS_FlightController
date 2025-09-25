@@ -72,7 +72,7 @@ void Flash_SPI_TxRxCpltHandler() {
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void TIM3_IRQHandler(void) {
+void TIM3_TaskNotifyISR() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   static uint32_t tick = 0;
 
@@ -82,22 +82,23 @@ void TIM3_IRQHandler(void) {
     tick++;
 
     // 4 kHz
-    if (tick % 1 == 0) {
-      xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
-      xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
-    }
+    xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
+                       &xHigherPriorityTaskWoken);
+    xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+                       &xHigherPriorityTaskWoken);
+
     // 250 Hz
     if (tick % 16 == 0) {
       xTaskNotifyFromISR(TaskRadioRXHandle, 0x01, eSetBits,
                          &xHigherPriorityTaskWoken);
     }
+
     // 50 Hz
     if (tick % 80 == 0) {
       xTaskNotifyFromISR(TaskUARTLoggingHandle, 0x01, eSetBits,
                          &xHigherPriorityTaskWoken);
     }
+
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
 }

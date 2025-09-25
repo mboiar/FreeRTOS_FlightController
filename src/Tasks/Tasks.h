@@ -30,3 +30,4 @@ void Radio_UART_RxCpltHandler();
 void Logging_UART_TxCpltHandler();
 void Flash_SPI_TxCpltHanlder();
 void Flash_SPI_TxRxCpltHandler();
+void TIM3_TaskNotifyISR();
