@@ -1,4 +1,5 @@
 #include "Tasks.h"
+#include "tim.h"
 #include "usart.h"
 #include "w25q64.h"
 
@@ -69,4 +70,34 @@ void Flash_SPI_TxRxCpltHandler() {
                      &xHigherPriorityTaskWoken);
   // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void TIM3_IRQHandler(void) {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  static uint32_t tick = 0;
+
+  if (__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE)) {
+    __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
+
+    tick++;
+
+    // 4 kHz
+    if (tick % 1 == 0) {
+      xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
+                         &xHigherPriorityTaskWoken);
+      xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+                         &xHigherPriorityTaskWoken);
+    }
+    // 250 Hz
+    if (tick % 16 == 0) {
+      xTaskNotifyFromISR(TaskRadioRXHandle, 0x01, eSetBits,
+                         &xHigherPriorityTaskWoken);
+    }
+    // 50 Hz
+    if (tick % 80 == 0) {
+      xTaskNotifyFromISR(TaskUARTLoggingHandle, 0x01, eSetBits,
+                         &xHigherPriorityTaskWoken);
+    }
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
 }

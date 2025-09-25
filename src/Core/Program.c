@@ -28,7 +28,7 @@ const osThreadAttr_t TaskFlightLoop_attributes = {
 const osThreadAttr_t TaskUARTLogging_attributes = {
     .name = "TaskUARTLogging",
     .stack_size = 128 * 4,
-    .priority = (osPriority_t)osPriorityNormal1,
+    .priority = (osPriority_t)osPriorityLow1,
 };
 
 const osThreadAttr_t TaskStartup_attributes = {
