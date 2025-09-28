@@ -59,8 +59,8 @@ void Init() {
   TaskTelemetryHandle =
       osThreadNew(TaskTelemetry, NULL, &TaskTelemetry_attributes);
 
-  // TaskFlightLoopHandle = osThreadNew(TaskFlightLoop, NULL,
-  // &TaskFlightLoop_attributes);
+  TaskFlightLoopHandle =
+      osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
   if (xLogQueue != NULL) {
     TaskUARTLoggingHandle =
         osThreadNew(TaskUARTLogging, NULL, &TaskUARTLogging_attributes);

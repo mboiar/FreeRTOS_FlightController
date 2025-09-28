@@ -22,7 +22,7 @@ void TaskRadioRX(void *argument) {
   crsf_state_t crsf_state = CRSF_ADDR;
   uint8_t byte;
 
-  uint8_t rx_buf[64];
+  uint8_t rx_buf[64] = {0};
   crsf_rc_t rc_data;
 
   // Begin receiving rc data in circular mode
@@ -31,11 +31,12 @@ void TaskRadioRX(void *argument) {
   }
 
   for (;;) {
+    // HAL_UART_Receive(&huart2, rx_buf, 10, pdMS_TO_TICKS(1000));
     size_t n = xStreamBufferReceive(crsfStream, &rx_buf, sizeof(rx_buf),
                                     pdMS_TO_TICKS(200));
     if (n == 0) {
 #if LOG_RADIO_RX
-      LOG_WARN("[Radio] No data");
+      LOG_WARN("[Radio] No data\r\n");
 #endif
     } else {
       for (size_t i = 0; i < n; i++) {
@@ -62,12 +63,12 @@ void TaskRadioRX(void *argument) {
           // RadioRXLog[0] = len;
           // RadioRXLog[1] = DATA_CTRL;
 #if LOG_RADIO_RX
-          LOG_INFO(&RadioRXLog);
+          LOG_INFO(RadioRXLog);
 #endif
         }
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
