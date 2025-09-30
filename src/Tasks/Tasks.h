@@ -2,11 +2,20 @@
 
 #include "FreeRTOS.h"
 #include "cmsis_os.h"
+#include "imu.h"
 #include "logger.h"
 #include "stream_buffer.h"
 #include <task.h>
 
-#define LOG_RADIO_RX 0
+typedef enum {
+  TASK_SENSOR_ID,
+  TASK_RADIO_RX_ID,
+  TASK_TELEMETRY_ID,
+  TASK_FLIGHT_LOOP_ID,
+  TASK_LOGGING_ID,
+  TASK_STARTUP_ID,
+  TaskID_LEN
+} TaskID;
 
 extern osThreadId_t TaskSensorHandle;
 extern osThreadId_t TaskTelemetryHandle;
@@ -17,6 +26,7 @@ extern osThreadId_t TaskStartupHandle;
 
 extern StreamBufferHandle_t crsfStream;
 extern state_t state;
+extern SemaphoreHandle_t imu_mutex;
 
 void StartupTask(void *argument);
 void TaskSensor(void *argument);

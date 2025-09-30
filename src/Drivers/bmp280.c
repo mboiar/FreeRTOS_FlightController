@@ -7,7 +7,7 @@
 // Register map
 #define BMP280_ID 0xD0
 #define BMP280_ID_VALUE 0x58
-#define BMP280_ADDR 0x76
+#define BMP280_ADDR 0x77
 
 #define BMP280_TEMP_X_LSB 0xFC
 #define BMP280_TEMP_LSB 0xFB

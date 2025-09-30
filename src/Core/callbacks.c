@@ -76,29 +76,17 @@ void TIM3_TaskNotifyISR() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   static uint32_t tick = 0;
 
-  if (__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE)) {
-    __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
+  tick++;
 
-    tick++;
+  // 4 kHz
+  // xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
+  //                    &xHigherPriorityTaskWoken);
 
-    // 4 kHz
-    xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
-                       &xHigherPriorityTaskWoken);
+  // 1 kHz
+  if (tick % 800 == 0) {
     xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
-
-    // 250 Hz
-    if (tick % 16 == 0) {
-      xTaskNotifyFromISR(TaskRadioRXHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
-    }
-
-    // 50 Hz
-    if (tick % 80 == 0) {
-      xTaskNotifyFromISR(TaskUARTLoggingHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
-    }
-
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
+
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

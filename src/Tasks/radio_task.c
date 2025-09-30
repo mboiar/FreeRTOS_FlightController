@@ -31,44 +31,36 @@ void TaskRadioRX(void *argument) {
   }
 
   for (;;) {
-    // HAL_UART_Receive(&huart2, rx_buf, 10, pdMS_TO_TICKS(1000));
+    // Block task until new message is received
+    // Task frequency tuned to receiver packet rate (150 Hz)
     size_t n = xStreamBufferReceive(crsfStream, &rx_buf, sizeof(rx_buf),
-                                    pdMS_TO_TICKS(200));
-    if (n == 0) {
-#if LOG_RADIO_RX
-      LOG_WARN("[Radio] No data\r\n");
-#endif
-    } else {
-      for (size_t i = 0; i < n; i++) {
-        if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
-          // TODO: log and process
-          uint8_t len = 2;
-          len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len,
-                          "%d %d %d ", frame.addr, frame.len, frame.type);
-          switch (frame.type) {
-          case CRSF_TYPE_RC:
-            radio_unpack_rc(&rc_data, frame.payload);
-            for (size_t i = 0; i < 16; i++) {
-              len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len, "%d ",
-                              rc_data.ch_data[i]);
-            }
-            break;
-          default:
-            for (size_t i = 0; i < frame.len - 2; i++) {
-              len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len, "%d ",
-                              frame.payload[i]);
-            }
-            break;
+                                    portMAX_DELAY);
+    for (size_t i = 0; i < n; i++) {
+      if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
+        // TODO: log and process
+        uint8_t len = 2;
+        len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len, "%d %d %d ",
+                        frame.addr, frame.len, frame.type);
+        switch (frame.type) {
+        case CRSF_TYPE_RC:
+          radio_unpack_rc(&rc_data, frame.payload);
+          for (size_t i = 0; i < 16; i++) {
+            len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len, "%d ",
+                            rc_data.ch_data[i]);
           }
-          // RadioRXLog[0] = len;
-          // RadioRXLog[1] = DATA_CTRL;
-#if LOG_RADIO_RX
-          LOG_INFO(RadioRXLog);
-#endif
+          break;
+        default:
+          for (size_t i = 0; i < frame.len - 2; i++) {
+            len += snprintf(RadioRXLog + len, sizeof(RadioRXLog) - len, "%d ",
+                            frame.payload[i]);
+          }
+          break;
         }
+        // RadioRXLog[0] = len;
+        // RadioRXLog[1] = DATA_CTRL;
+        LOG_INFO(TASK_RADIO_RX_ID, RadioRXLog);
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 

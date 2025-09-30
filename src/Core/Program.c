@@ -1,9 +1,10 @@
 #include "Program.h"
 #include "cmsis_os.h"
+#include "tim.h"
 
 const osThreadAttr_t TaskSensor_attributes = {
     .name = "TaskSensor",
-    .stack_size = 128 * 4,
+    .stack_size = 128 * 16,
     .priority = (osPriority_t)osPriorityHigh2,
 };
 
@@ -27,7 +28,7 @@ const osThreadAttr_t TaskFlightLoop_attributes = {
 
 const osThreadAttr_t TaskUARTLogging_attributes = {
     .name = "TaskUARTLogging",
-    .stack_size = 128 * 4,
+    .stack_size = 128 * 16,
     .priority = (osPriority_t)osPriorityLow1,
 };
 
@@ -49,10 +50,16 @@ osThreadId_t TaskFlightLoopHandle;
 osThreadId_t TaskUARTLoggingHandle;
 osThreadId_t TaskStartupHandle;
 
+SemaphoreHandle_t imu_mutex;
+
 void Init() {
+  HAL_TIM_Base_Start_IT(&htim3);
+
   crsfStream = xStreamBufferCreate(256, 20);
   state.sysid = 1;
   xLogQueue = xQueueCreate(LogQueueLen, BUFFER_SIZE);
+
+  SemaphoreHandle_t imu_mutex = xSemaphoreCreateMutex();
 
   TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
   TaskRadioRXHandle = osThreadNew(TaskRadioRX, NULL, &TaskRadioRX_attributes);

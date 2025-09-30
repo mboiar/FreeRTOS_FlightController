@@ -14,7 +14,7 @@ void TaskUARTLogging(void *argument) {
   BaseType_t xQueueStatus;
   BaseType_t xResult;
   uint8_t data_buf[BUFFER_SIZE] = {0};
-  uint8_t packet[PACKET_SIZE] = {0};
+  // uint8_t packet[PACKET_SIZE] = {0};
   size_t length;
   TickType_t timestamp;
   mavlink_message_t msg;
@@ -23,6 +23,7 @@ void TaskUARTLogging(void *argument) {
     xQueueStatus = xQueueReceive(xLogQueue, &msg, portMAX_DELAY);
     length = mavlink_msg_to_send_buffer(data_buf, &msg);
     UARTStatus = HAL_UART_Transmit_DMA(&huart1, data_buf, length);
+    // UARTStatus = HAL_UART_Transmit_DMA(&huart1, &msg, sizeof(msg));
     // timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
     // length = data_buf[0];
     // packet[0] = 0x24;

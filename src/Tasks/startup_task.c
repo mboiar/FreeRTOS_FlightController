@@ -29,7 +29,7 @@ void StartupTask(void *argument) {
   /* Infinite loop */
   for (;;) {
     // memset(DefaultTaskLog, 0, BUFFER_SIZE);
-    LOG_INFO("[Default] Called");
+    LOG_INFO(TASK_STARTUP_ID, "[Default] Called");
     if (xStatus != pdPASS) {
       // handle queue fail
     }
