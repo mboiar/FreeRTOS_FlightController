@@ -97,3 +97,5 @@ HAL_StatusTypeDef mpu6050_i2c_master_status(uint8_t *status);
 HAL_StatusTypeDef mpu6050_user_ctrl(uint8_t ctrl);
 
 HAL_StatusTypeDef mpu6050_slv0_init();
+
+void IMU_RxCpltCallback();

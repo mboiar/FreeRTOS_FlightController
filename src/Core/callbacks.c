@@ -1,4 +1,5 @@
 #include "Tasks.h"
+#include "mpu6050.h"
 #include "tim.h"
 #include "usart.h"
 #include "w25q64.h"
@@ -22,6 +23,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   //     &xHigherPriorityTaskWoken);
   //     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   // }
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+  if (hi2c == &hi2c1) {
+    IMU_RxCpltCallback();
+  }
 }
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {

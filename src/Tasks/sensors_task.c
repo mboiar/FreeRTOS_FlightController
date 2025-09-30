@@ -92,9 +92,9 @@ void TaskSensor(void *argument) {
 
     if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
 
-      mpu6050_read_data(&mpu6050_data, &qmc5883_data); // blocking ? TODO
+      mpu6050_read_data(&mpu6050_data, &qmc5883_data); // DMA
       bmp_acquire_data(&bmp_pressure, &(sdata.bmp_temp), tp,
-                       pp); // blocking ?                TODO
+                       pp); // blocking
 
       sdata.alt = bmp280_get_altitude(bmp_pressure, p_ref, sdata.bmp_temp);
       // qmc5883_read_data(&qmc5883_data);
