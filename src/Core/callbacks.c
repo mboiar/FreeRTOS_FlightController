@@ -58,6 +58,8 @@ void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart) {
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart == &huart2) {
     Radio_UART_RxCpltHandler();
+  } else if (huart == &huart1) {
+    CommRx_UART_RxCpltHandler();
   }
 }
 

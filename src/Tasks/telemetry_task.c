@@ -15,9 +15,8 @@ void TaskTelemetry(void *argument) {
   for (;;) {
     mavlink_msg_heartbeat_pack(1, MAV_COMP_ID_AUTOPILOT1, &msg,
                                MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_GENERIC,
-                               MAV_MODE_FLAG_MANUAL_INPUT_ENABLED, 0,
-                               MAV_STATE_ACTIVE);
-    // LOG_INFO(&msg);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+                               MAV_MODE_PREFLIGHT, 0, MAV_STATE_CALIBRATING);
+    comm_tx_send(&msg);
+    vTaskDelay(pdMS_TO_TICKS(500));
   }
 }

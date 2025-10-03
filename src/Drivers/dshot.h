@@ -7,8 +7,7 @@ Author: Maks Boiar
 
 #pragma once
 
-// #include "stm32f4xx_hal.h"
-#include "stdint.h"
+#include <stdint.h>
 
 typedef enum { DSHOT150 = 1, DSHOT300, DSHOT600 } dshot_type_t;
 

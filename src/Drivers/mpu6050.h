@@ -56,15 +56,15 @@ typedef struct {
   int16_t accel_x, accel_y, accel_z;
   int16_t gyro_x, gyro_y, gyro_z;
   int16_t temp;
-} mpu6050_out;
+} mpu6050_raw_t;
 
 typedef struct {
   float accel_x, accel_y, accel_z;
-} accel_3d;
+} accel3d_t;
 
 typedef struct {
   float gyro_x, gyro_y, gyro_z;
-} gyro_3d;
+} gyro3d_t;
 
 /* Read MPU6050 register in blocking mode */
 HAL_StatusTypeDef mpu6050_read_reg(uint8_t reg, uint8_t *value);
@@ -80,7 +80,10 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1);
 HAL_StatusTypeDef mpu6050_read_reg_burst(uint8_t reg, uint16_t data_size,
                                          uint8_t *value);
 
-HAL_StatusTypeDef mpu6050_read_data(mpu6050_out *val, qmc5883_out *mag_val);
+HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro,
+                                    mag3d_t *mag, float *temp, float offv[3],
+                                    float offM[3][3], gyro3d_t offG,
+                                    accel3d_t offA, float scaleA[3]);
 
 float mpu6050_calc_temp(int16_t raw_temp);
 

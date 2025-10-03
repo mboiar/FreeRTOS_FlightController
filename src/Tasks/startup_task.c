@@ -1,7 +1,7 @@
 #include "Tasks.h"
 #include "w25q64.h"
 
-static char DefaultTaskLog[BUFFER_SIZE] = {0};
+// static char DefaultTaskLog[BUFFER_SIZE] = {0};
 
 void StartupTask(void *argument) {
   // uint32_t PreviousWakeTime = osKernelSysTick();
@@ -10,7 +10,7 @@ void StartupTask(void *argument) {
   uint8_t NoteIndex = 0;
 
   // Tone cur_tone;
-  static UBaseType_t blocked = 1;
+  // static UBaseType_t blocked = 1;
 
   device_info device_info;
   w25q64_device_info(&device_info);
@@ -22,8 +22,8 @@ void StartupTask(void *argument) {
 
   bool melody_completed = false;
   // vTaskSuspend(NULL);
-  uint32_t ulNotifiedValue = 0;
-  BaseType_t xResult;
+  // uint32_t ulNotifiedValue = 0;
+  // BaseType_t xResult;
   BaseType_t xStatus;
 
   /* Infinite loop */

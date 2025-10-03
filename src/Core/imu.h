@@ -6,8 +6,8 @@
 #include "semphr.h"
 
 typedef struct {
-  accel_3d accel;
-  gyro_3d gyro;
+  accel3d_t accel;
+  gyro3d_t gyro;
   float heading;
   float alt;
   // TickType_t timestamp;

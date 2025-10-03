@@ -23,21 +23,9 @@ void TaskUARTLogging(void *argument) {
     xQueueStatus = xQueueReceive(xLogQueue, &msg, portMAX_DELAY);
     length = mavlink_msg_to_send_buffer(data_buf, &msg);
     UARTStatus = HAL_UART_Transmit_DMA(&huart1, data_buf, length);
-    // UARTStatus = HAL_UART_Transmit_DMA(&huart1, &msg, sizeof(msg));
-    // timestamp = pdMS_TO_TICKS(xTaskGetTickCount());
-    // length = data_buf[0];
-    // packet[0] = 0x24;
-    // packet[1] = 0x55;
-    // packet[2] = data_buf[1]; // TYPE
-    // size_t len = snprintf(packet+3, PACKET_SIZE, " %lu ", timestamp);
-    // packet[PACKET_SIZE-2] = '\r';
-    // packet[PACKET_SIZE-1] = '\n';
-    // for (size_t i=0; i<length; i+=PACKET_SIZE-6-len) {
-    //   memcpy(packet+4+len, data_buf+i+2, PACKET_SIZE-6-len);
-    //   UARTStatus = HAL_UART_Transmit_DMA(&huart1, packet, PACKET_SIZE);
-    //   xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue,
-    //   portMAX_DELAY);  // Wait for UART tx to complete
-    // }
+    // Do NOT start another send until previous completed
+    xResult =
+        xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
   }
 }
 

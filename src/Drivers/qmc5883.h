@@ -1,7 +1,7 @@
 #pragma once
 
 #include "i2c.h"
-#include "math.h"
+#include <math.h>
 
 #define QMC5883_ID_REG 0x0D
 #define QMC_5883_DATAX_LSB_REG 0x00
@@ -70,14 +70,19 @@ typedef struct {
 
 typedef struct {
   int16_t MagX, MagY, MagZ;
-} qmc5883_out;
+} qmc5883_raw_t;
+
+typedef struct {
+  float MagX, MagY, MagZ;
+} mag3d_t;
 
 /* Check MPU6050 status*/
 HAL_StatusTypeDef qmc5883_heartbeat();
 
 HAL_StatusTypeDef qmc5883_set_ctrl(uint8_t ctrl);
 
-HAL_StatusTypeDef qmc5883_read_data(qmc5883_out *val);
+HAL_StatusTypeDef qmc5883_read_data(qmc5883_raw_t *val, float *offv,
+                                    float **offM);
 
 HAL_StatusTypeDef qmc5883_set_config(uint8_t cfg);
 
@@ -89,4 +94,4 @@ HAL_StatusTypeDef qmc5883_status();
 
 float qmc5883_data_convert(int16_t val);
 
-float qmc5883_get_heading(const qmc5883_out *data, float decl);
+float qmc5883_get_heading(const mag3d_t *data, float decl);

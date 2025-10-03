@@ -38,6 +38,12 @@ const osThreadAttr_t TaskStartup_attributes = {
     .priority = (osPriority_t)osPriorityAboveNormal1,
 };
 
+const osThreadAttr_t TaskCommRx_attributes = {
+    .name = "TaskCommRx",
+    .stack_size = 128 * 16,
+    .priority = (osPriority_t)osPriorityAboveNormal3,
+};
+
 const size_t LogQueueLen = 5;
 
 QueueHandle_t xLogQueue;
@@ -49,6 +55,7 @@ osThreadId_t TaskRadioRXHandle;
 osThreadId_t TaskFlightLoopHandle;
 osThreadId_t TaskUARTLoggingHandle;
 osThreadId_t TaskStartupHandle;
+osThreadId_t TaskCommRxHandle;
 
 SemaphoreHandle_t imu_mutex;
 
@@ -62,6 +69,7 @@ void Init() {
   SemaphoreHandle_t imu_mutex = xSemaphoreCreateMutex();
 
   TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
+  TaskCommRxHandle = osThreadNew(TaskCommRx, NULL, &TaskCommRx_attributes);
   TaskRadioRXHandle = osThreadNew(TaskRadioRX, NULL, &TaskRadioRX_attributes);
   TaskTelemetryHandle =
       osThreadNew(TaskTelemetry, NULL, &TaskTelemetry_attributes);

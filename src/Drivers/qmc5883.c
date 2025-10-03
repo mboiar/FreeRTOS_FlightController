@@ -24,7 +24,8 @@ HAL_StatusTypeDef qmc5883_read_reg_burst(uint8_t reg, uint16_t data_size,
                           I2C_MEMADD_SIZE_8BIT, value, data_size, TIMEOUT);
 }
 
-HAL_StatusTypeDef qmc5883_read_data(qmc5883_out *val) {
+HAL_StatusTypeDef qmc5883_read_data(qmc5883_raw_t *val, float *offv,
+                                    float **offM) {
   uint8_t rx_data[6] = {0};
   HAL_StatusTypeDef status =
       qmc5883_read_reg_burst(QMC_5883_DATAX_LSB_REG, 6, rx_data);
@@ -58,10 +59,10 @@ HAL_StatusTypeDef qmc5883_status(uint8_t *status) {
   return qmc5883_read_reg(QMC5883_STATUS_REG, status);
 }
 
-float qmc5883_data_convert(int16_t val) { return (float)val / 32768.0 * 2; }
+float qmc5883_data_convert(int16_t val) { return ((float)val) / 32768.0 * 2; }
 
-float qmc5883_get_heading(const qmc5883_out *data, float decl) {
-  float heading = atan2f((float)data->MagY, (float)data->MagX);
+float qmc5883_get_heading(const mag3d_t *data, float decl) {
+  float heading = atan2f(data->MagY, data->MagX);
   heading += decl;
   if (heading < 0) {
     heading += 2 * M_PI;

@@ -1,0 +1,6 @@
+#pragma once
+
+#define SENSOR_MEASURE 0x01
+#define SENSOR_CALIBRATION_START (0x01 << 1)
+#define SENSOR_CALIBRATION_STOP (0x01 << 2)
+#define SENSOR_LOAD_PARAMS (0x01 << 3)

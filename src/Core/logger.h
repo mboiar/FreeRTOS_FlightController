@@ -1,12 +1,10 @@
 #pragma once
 
-// #include "stm32f4xx.h"
 #include "FreeRTOS.h"
-// #include "Tasks.h"
 #include "queue.h"
 
 #include "common/mavlink.h"
-#include "stdarg.h"
+#include <stdarg.h>
 
 #define BUFFER_SIZE MAVLINK_MAX_PACKET_LEN
 #define PACKET_SIZE 128
@@ -19,6 +17,8 @@ typedef struct {
 } state_t;
 
 extern QueueHandle_t xLogQueue;
+
+void comm_tx_send(void *pdata);
 
 void mavlink_log_send(uint8_t src, MAV_SEVERITY severity, const char *fmt, ...);
 

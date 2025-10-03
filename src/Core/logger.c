@@ -31,3 +31,5 @@ void mavlink_log_send(uint8_t src, MAV_SEVERITY severity, const char *fmt,
   va_end(args);
   xQueueSend(xLogQueue, &msg, 0);
 }
+
+void comm_tx_send(void *pdata) { xQueueSendToBack(xLogQueue, pdata, 0); }

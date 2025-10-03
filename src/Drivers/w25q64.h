@@ -2,7 +2,7 @@
 
 #include "gpio.h"
 #include "spi.h"
-#include "stdbool.h"
+#include <stdbool.h>
 
 typedef enum { TRANSFER_WAIT, TRANSFER_COMPLETE, TRANSFER_ERROR } SPI_State;
 
