@@ -22,9 +22,9 @@
 #define MPU6050_FIFO_EN 0x01 << 6
 #define MPU6050_I2C_MST_EN 0x01 << 5
 
-#define MPU6050_WAIT_FOR_ES 0x01 << 6
+#define MPU6050_WAIT_FOR_ES 0x01 << 6 //  sync with ext data
 
-// #define MPU6050_I2C_MST_N
+#define SMPRT_DIV 7U // 1 kHz Gyro+Accel sample rate
 
 typedef enum {
   CLKSEL_INT = 0,
@@ -80,10 +80,9 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1);
 HAL_StatusTypeDef mpu6050_read_reg_burst(uint8_t reg, uint16_t data_size,
                                          uint8_t *value);
 
-HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro,
-                                    mag3d_t *mag, float *temp, float offv[3],
-                                    float offM[3][3], gyro3d_t offG,
-                                    accel3d_t offA, float scaleA[3]);
+HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
+                                    const gyro3d_t *offG, const accel3d_t *offA,
+                                    float scaleA[3]);
 
 float mpu6050_calc_temp(int16_t raw_temp);
 
@@ -91,7 +90,7 @@ float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale);
 
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale);
 
-HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1);
+HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1, uint8_t cfg2);
 
 HAL_StatusTypeDef mpu6050_set_master_ctrl(uint8_t ctrl);
 

@@ -4,26 +4,7 @@
 #include "usart.h"
 #include "w25q64.h"
 
-// osThreadId_t TaskStartupHandle;
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  // if (GPIO_Pin == GPIO_PIN_0) {
-  //     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  //     xTaskNotifyFromISR(defaultTaskHandle, 0x01, eSetBits,
-  //     &xHigherPriorityTaskWoken);
-  //     // vTaskNotifyGiveFromISR(defaultTaskHandle,
-  //     &xHigherPriorityTaskWoken);
-  //     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-  // }
-  // if (GPIO_Pin == GPIO_PIN_8) {
-  //     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  //     xTaskNotifyFromISR(defaultTaskHandle, 0x04, eSetBits,
-  //     &xHigherPriorityTaskWoken);
-  //     // vTaskNotifyGiveFromISR(defaultTaskHandle,
-  //     &xHigherPriorityTaskWoken);
-  //     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-  // }
-}
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {}
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
   if (hi2c == &hi2c1) {
@@ -92,7 +73,7 @@ void TIM3_TaskNotifyISR() {
   //                    &xHigherPriorityTaskWoken);
 
   // 1 kHz
-  if (tick % 800 == 0) {
+  if (tick % 4 == 0) {
     xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
   }

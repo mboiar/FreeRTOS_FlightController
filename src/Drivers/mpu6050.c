@@ -34,6 +34,8 @@
 #define MPU6050_I2C_SLV0_REG_DIS 0x01 << 5
 #define MPU6050_I2C_SLV0_GRP 0x01 << 4
 
+#define MPU6050_SMPRT_DIV_REG 0x19
+
 #define TIMEOUT 100
 
 static I2C_HandleTypeDef *hi2c = &hi2c1;
@@ -69,16 +71,14 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
   return mpu6050_write_reg(MPU6050_PWR_MGMT_2, opt1);
 }
 
-HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro,
-                                    mag3d_t *mag, float *temp, float offv[3],
-                                    float offM[3][3], gyro3d_t offG,
-                                    accel3d_t offA, float scaleA[3]) {
+HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
+                                    const gyro3d_t *offG, const accel3d_t *offA,
+                                    float scaleA[3]) {
   HAL_StatusTypeDef status;
   uint32_t notif;
   mpu6050_raw_t val;
-  qmc5883_raw_t mag_val;
-  uint8_t rx_data[20] = {0};
-  status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 20, rx_data);
+  uint8_t rx_data[14] = {0};
+  status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
   xTaskNotifyWait(pdFALSE, pdTRUE, &notif, portMAX_DELAY);
   if (notif == 0x8000) {
 
@@ -89,31 +89,18 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro,
     val.gyro_y = (rx_data[8] << 8) | rx_data[9];
     val.gyro_z = (rx_data[10] << 8) | rx_data[11];
     val.temp = (rx_data[12] << 8) | rx_data[13];
-    mag_val.MagX = (rx_data[15] << 8) | rx_data[14];
-    mag_val.MagY = (rx_data[17] << 8) | rx_data[16];
-    mag_val.MagZ = (rx_data[19] << 8) | rx_data[18];
-
-    mag->MagX = qmc5883_data_convert(mag_val.MagX) - offv[0];
-    mag->MagX = qmc5883_data_convert(mag_val.MagY) - offv[1];
-    mag->MagX = qmc5883_data_convert(mag_val.MagZ) - offv[2];
-    mag->MagX = offM[0][0] * mag->MagX + offM[0][1] * mag->MagY +
-                offM[0][2] * mag->MagZ;
-    mag->MagY = offM[1][0] * mag->MagX + offM[1][1] * mag->MagY +
-                offM[1][2] * mag->MagZ;
-    mag->MagZ = offM[2][0] * mag->MagX + offM[2][1] * mag->MagY +
-                offM[2][2] * mag->MagZ;
     acc->accel_x =
-        (mpu6050_calc_accel(val.accel_x, ACCEL_FS_2G) - offA.accel_x) *
+        (mpu6050_calc_accel(val.accel_x, ACCEL_FS_2G) - offA->accel_x) *
         scaleA[0];
     acc->accel_y =
-        (mpu6050_calc_accel(val.accel_y, ACCEL_FS_2G) - offA.accel_y) *
+        (mpu6050_calc_accel(val.accel_y, ACCEL_FS_2G) - offA->accel_y) *
         scaleA[1];
     acc->accel_z =
-        (mpu6050_calc_accel(val.accel_z, ACCEL_FS_2G) - offA.accel_z) *
+        (mpu6050_calc_accel(val.accel_z, ACCEL_FS_2G) - offA->accel_z) *
         scaleA[2];
-    gyro->gyro_x = mpu6050_calc_gyro(val.gyro_x, FS_SEL_250) - offG.gyro_x;
-    gyro->gyro_y = mpu6050_calc_gyro(val.gyro_y, FS_SEL_250) - offG.gyro_y;
-    gyro->gyro_z = mpu6050_calc_gyro(val.gyro_z, FS_SEL_250) - offG.gyro_z;
+    gyro->gyro_x = mpu6050_calc_gyro(val.gyro_x, FS_SEL_250) - offG->gyro_x;
+    gyro->gyro_y = mpu6050_calc_gyro(val.gyro_y, FS_SEL_250) - offG->gyro_y;
+    gyro->gyro_z = mpu6050_calc_gyro(val.gyro_z, FS_SEL_250) - offG->gyro_z;
     *temp = mpu6050_calc_temp(val.temp);
 
     return HAL_OK;
@@ -152,8 +139,9 @@ float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale) {
   return (float)raw_gyro / fscale;
 }
 
-HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1) {
-  HAL_StatusTypeDef status = mpu6050_write_reg(MPU6050_INT_PIN_CFG, cfg0);
+HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1, uint8_t cfg2) {
+  mpu6050_write_reg(MPU6050_SMPRT_DIV_REG, cfg2);
+  mpu6050_write_reg(MPU6050_INT_PIN_CFG, cfg0);
   return mpu6050_write_reg(MPU6050_INT_ENABLE, cfg1);
 }
 

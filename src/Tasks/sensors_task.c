@@ -71,17 +71,17 @@ void TaskSensor(void *argument) {
 
         } else if (sstate == READY) {
 
-          mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mag, &mpu_temp,
-                            magcal_offset, magcal_mat, offG, offA, scaleA);
+          mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG,
+                            &offA, scaleA);
 
           if (tick % 10 == 0) { // 100 Hz
             bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp,
                              pp); // blocking
             tmp_data.alt =
                 bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
+            qmc5883_read_data(&mag, magcal_offset, magcal_mat);
+            tmp_data.heading = qmc5883_get_heading(&mag, 108.8 / 1000.0);
           }
-
-          tmp_data.heading = qmc5883_get_heading(&mag, 108.8 / 1000.0);
 
           if (imu_mutex != NULL) {
             xSemaphoreTake(imu_mutex, portMAX_DELAY);
@@ -99,8 +99,9 @@ static void sensors_calibrate() {
 
   // collect calibration data
   while (true) {
-    mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mag, &mpu_temp,
-                      magcal_offset, magcal_mat, offG, offA, scaleA); // DMA
+    mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
+                      scaleA); // DMA
+    qmc5883_read_data(&mag, magcal_offset, magcal_mat);
 
     cur_tick = xTaskGetTickCount();
     msglen = mavlink_msg_highres_imu_pack(
@@ -136,8 +137,8 @@ static void sensors_init() {
   }
   mpu6050_user_ctrl(0);
   if ((mpu6050_set_power_options(CLKSEL_PLLX, 0) != HAL_OK) ||
-      (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN) !=
-       HAL_OK)) {
+      (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN,
+                          SMPRT_DIV) != HAL_OK)) {
     LOG_CRIT(TASK_SENSOR_ID, "Accel: couldn't configure");
     // TODO: handle error
   } else {
@@ -191,15 +192,6 @@ static void sensors_init() {
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Mag: Ready\r\n");
   }
-
-  // Redirect mag data to mpu6050 for sensor sync
-  mpu6050_set_master_ctrl(MPU6050_WAIT_FOR_ES);
-  mpu6050_set_config(0, MPU6050_DATA_RDY_EN);
-  mpu6050_user_ctrl(MPU6050_I2C_MST_EN);
-
-  if (mpu6050_slv0_init() != HAL_OK) {
-    LOG_CRIT(TASK_SENSOR_ID, "Mag: couldn't configure as slave");
-  }
 }
 
 static uint8_t sensors_calibrate_stationary() {
@@ -208,8 +200,8 @@ static uint8_t sensors_calibrate_stationary() {
   if (calib_tick == 300) {
     return 1;
   }
-  mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mag, &mpu_temp,
-                    magcal_offset, magcal_mat, offG, offA, scaleA);
+  mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
+                    scaleA);
   bmp_acquire_data(&bmp_pressure, &(tmp_data.bmp_temp), tp,
                    pp); // blocking
   p_ref =
