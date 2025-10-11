@@ -4,7 +4,7 @@
 
 const osThreadAttr_t TaskSensor_attributes = {
     .name = "TaskSensor",
-    .stack_size = 128 * 16,
+    .stack_size = 128 * 32,
     .priority = (osPriority_t)osPriorityHigh2,
 };
 

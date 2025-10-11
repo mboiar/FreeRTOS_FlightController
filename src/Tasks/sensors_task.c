@@ -25,13 +25,15 @@ BMP_CAL_T_PARAMS tp;
 BMP_CAL_P_PARAMS pp;
 BaseType_t queue_status;
 mavlink_message_t msg;
-TickType_t cur_tick;
+TickType_t cur_tick, last_tick, dt;
 size_t msglen;
 
 mag3d_t mag;
 
 float magcal_offset[3];
 float magcal_mat[3][3];
+float mag_decl;
+float mag_incl;
 gyro3d_t offG;
 accel3d_t offA;
 float scaleA[3];
@@ -40,6 +42,11 @@ static uint32_t notif;
 float p_ref; // reference pressure
 float bmp_temp, bmp_pressure;
 gyro3d_t gyro_offset;
+
+static eskf_t eskf;
+
+float sigma_ww = 0, sigma_wn = 0, sigma_an = 0, sigma_aw = 0, sigma_mag = 0,
+      sigma_baro = 0;
 
 /**
  * @brief Task to handle sensor operations
@@ -56,7 +63,7 @@ void TaskSensor(void *argument) {
 
   for (;;) {
     cur_tick = xTaskGetTickCount();
-
+    // BUG: clears all notifications?
     if (xTaskNotifyWait(pdFALSE, pdTRUE, &notif, portMAX_DELAY) == pdTRUE) {
       if (notif & SENSOR_CALIBRATION_START) {
         sensors_calibrate();
@@ -65,6 +72,8 @@ void TaskSensor(void *argument) {
         if (sstate == CALIBRATING) {
           if (tick % 10 == 0) { // 100 Hz
             if (sensors_calibrate_stationary()) {
+              // TODO: check if values make sense
+              eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww);
               sstate = READY;
             }
           }
@@ -73,14 +82,25 @@ void TaskSensor(void *argument) {
 
           mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG,
                             &offA, scaleA);
-
+          eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
+                       (float)(last_tick - cur_tick));
           if (tick % 10 == 0) { // 100 Hz
             bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp,
                              pp); // blocking
             tmp_data.alt =
                 bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
             qmc5883_read_data(&mag, magcal_offset, magcal_mat);
-            tmp_data.heading = qmc5883_get_heading(&mag, 108.8 / 1000.0);
+            tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+            // eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
+            // eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            msglen = mavlink_msg_attitude_quaternion_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
+                0, 0, eskf.P);
+            msglen = mavlink_msg_local_position_ned_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
+                eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
+                eskf.state.vel[2], 0, 0, 0, eskf.P);
           }
 
           if (imu_mutex != NULL) {
@@ -91,6 +111,7 @@ void TaskSensor(void *argument) {
         }
       }
     }
+    last_tick = cur_tick;
   }
 }
 

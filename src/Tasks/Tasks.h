@@ -5,6 +5,7 @@
 #include "cmsis_os.h"
 #include "imu.h"
 #include "logger.h"
+#include "semphr.h"
 #include "stream_buffer.h"
 #include "task.h"
 
@@ -35,8 +36,11 @@ extern SemaphoreHandle_t imu_mutex;
 
 extern float magcal_offset[3];
 extern float magcal_mat[3][3];
+extern float mag_decl;
+extern float mag_incl;
 extern accel3d_t offA;
 extern float scaleA[3];
+extern sensor_data_t imu_data;
 
 void StartupTask(void *argument);
 void TaskSensor(void *argument);
