@@ -9,6 +9,10 @@ cmake_minimum_required(VERSION 3.22)
 
 set(SOFTWARE_SRC_PATH src)
 
+add_compile_definitions(CM4)
+add_compile_definitions(MATRIXCHECK)
+add_compile_definitions(ROUNDING)
+
 # Setup compiler settings
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -22,6 +26,8 @@ endif()
 
 # Set the project name
 set(CMAKE_PROJECT_NAME BlackPillFlightController)
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O3 -ffast-math")
 
 
 # Enable compile command to ease indexing with e.g. clangd
@@ -39,6 +45,10 @@ add_executable(${CMAKE_PROJECT_NAME})
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
+
+# Add CMSIS-DSP sources
+set(CMSISCORE ${CMAKE_SOURCE_DIR}/Drivers/CMSIS)
+add_subdirectory(${CMAKE_SOURCE_DIR}/CMSIS-DSP/Source bin_dsp)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -60,6 +70,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${SOFTWARE_SRC_PATH}/Drivers
     ${SOFTWARE_SRC_PATH}/Tasks
     ${SOFTWARE_SRC_PATH}/Core
+    CMSIS-DSP/Include
 )
 
 # Add project symbols (macros)
@@ -70,7 +81,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
-
+    CMSISDSP
     # Add user defined libraries
 )
 

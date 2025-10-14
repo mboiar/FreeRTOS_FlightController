@@ -30,7 +30,7 @@ typedef struct {
 typedef struct {
   eskf_state_t state; // Nominal state
   eskf_state_t dx;    // Error state
-  float P[15][15];    // Covariance
+  float P[15 * 15];   // Covariance
   float sigma_an;
   float sigma_wn;
   float sigma_aw;
@@ -66,3 +66,9 @@ void eskf_update_yaw(eskf_t *eskf, float yaw, float cov);
  * @retval None
  */
 void eskf_update_alt(eskf_t *eskf, float alt, float ov);
+
+void eskf_get_cov_quat(eskf_t *eskf, float dst[9]);
+
+void eskf_get_cov_posvel(eskf_t *eskf, float dst[15]);
+
+void eskf_get_cov_pos(eskf_t *eskf, float dst[9]);

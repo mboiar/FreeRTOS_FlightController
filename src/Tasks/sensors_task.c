@@ -1,4 +1,5 @@
 #include "Tasks.h"
+#include "imu.h"
 #include "utils.h"
 
 typedef enum { INIT, CALIBRATING, READY } SENSORS_STATE;
@@ -48,6 +49,8 @@ static eskf_t eskf;
 float sigma_ww = 0, sigma_wn = 0, sigma_an = 0, sigma_aw = 0, sigma_mag = 0,
       sigma_baro = 0;
 
+static float PVcov[15], Qcov[9];
+
 /**
  * @brief Task to handle sensor operations
  * @param argument: Not used
@@ -93,14 +96,16 @@ void TaskSensor(void *argument) {
             tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
             // eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
             // eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            eskf_get_cov_posvel(&eskf, PVcov);
+            eskf_get_cov_quat(&eskf, Qcov);
             msglen = mavlink_msg_attitude_quaternion_cov_pack(
                 1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
-                0, 0, eskf.P);
+                0, 0, Qcov);
             msglen = mavlink_msg_local_position_ned_cov_pack(
                 1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
                 MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
                 eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
-                eskf.state.vel[2], 0, 0, 0, eskf.P);
+                eskf.state.vel[2], 0, 0, 0, PVcov);
           }
 
           if (imu_mutex != NULL) {

@@ -73,7 +73,7 @@ void TIM3_TaskNotifyISR() {
   //                    &xHigherPriorityTaskWoken);
 
   // 1 kHz
-  if (tick % 4 == 0) {
+  if (tick % 16 == 0) {
     xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
   }
