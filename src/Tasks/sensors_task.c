@@ -1,5 +1,10 @@
+#include "API.h"
 #include "Tasks.h"
+#include "common/mavlink.h"
 #include "imu.h"
+#include "logger.h"
+#include "portmacro.h"
+#include "projdefs.h"
 #include "utils.h"
 
 typedef enum { INIT, CALIBRATING, READY } SENSORS_STATE;
@@ -46,6 +51,8 @@ gyro3d_t gyro_offset;
 
 static eskf_t eskf;
 
+TickType_t tick_end, tick_start;
+
 float sigma_ww = 0, sigma_wn = 0, sigma_an = 0, sigma_aw = 0, sigma_mag = 0,
       sigma_baro = 0;
 
@@ -67,26 +74,37 @@ void TaskSensor(void *argument) {
   for (;;) {
     cur_tick = xTaskGetTickCount();
     // BUG: clears all notifications?
-    if (xTaskNotifyWait(pdFALSE, pdTRUE, &notif, portMAX_DELAY) == pdTRUE) {
+    if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
       if (notif & SENSOR_CALIBRATION_START) {
+        notif &= ~SENSOR_CALIBRATION_START;
         sensors_calibrate();
       } else if (notif & SENSOR_MEASURE) {
+        notif &= ~SENSOR_MEASURE;
         tick++;
         if (sstate == CALIBRATING) {
           if (tick % 10 == 0) { // 100 Hz
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
               eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww);
+              last_tick = xTaskGetTickCount();
               sstate = READY;
             }
           }
 
         } else if (sstate == READY) {
-
+          tick_start = xTaskGetTickCount();
           mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG,
                             &offA, scaleA);
+          dt = cur_tick - last_tick;
           eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
-                       (float)(last_tick - cur_tick));
+                       (float)((dt > 0.0f) ? dt : 1.0f));
+          last_tick = cur_tick;
+
+          tick_end = xTaskGetTickCount();
+          msglen = mavlink_msg_param_value_pack(
+              1, MAV_COMP_ID_AUTOPILOT1, &msg, " EKF_EXEC_TIME ",
+              (float)(tick_end - tick_start), 0, 1, 0);
+          // comm_tx_send(&msg);
           if (tick % 10 == 0) { // 100 Hz
             bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp,
                              pp); // blocking
@@ -94,18 +112,25 @@ void TaskSensor(void *argument) {
                 bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
             qmc5883_read_data(&mag, magcal_offset, magcal_mat);
             tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
-            // eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
-            // eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
+            eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
             eskf_get_cov_posvel(&eskf, PVcov);
             eskf_get_cov_quat(&eskf, Qcov);
-            msglen = mavlink_msg_attitude_quaternion_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
-                0, 0, Qcov);
-            msglen = mavlink_msg_local_position_ned_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
-                eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
-                eskf.state.vel[2], 0, 0, 0, PVcov);
+            xTaskNotifyWait(pdFALSE, 0, &notif, 0);
+            if (notif & SENSOR_DEBUG_EKF) {
+              notif &= ~SENSOR_DEBUG_EKF;
+              msglen = mavlink_msg_attitude_quaternion_cov_pack(
+                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
+                  0, 0, Qcov);
+              // comm_tx_send(&msg);
+              msglen = mavlink_msg_local_position_ned_cov_pack(
+                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                  MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0],
+                  eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
+                  eskf.state.vel[1], eskf.state.vel[2], 0, 0, 0, PVcov);
+              // comm_tx_send(&msg);
+              //  vTaskDelay(pdMS_TO_TICKS(300));
+            }
           }
 
           if (imu_mutex != NULL) {
@@ -116,7 +141,6 @@ void TaskSensor(void *argument) {
         }
       }
     }
-    last_tick = cur_tick;
   }
 }
 
@@ -136,16 +160,18 @@ static void sensors_calibrate() {
         mag.MagY, mag.MagZ, 0, 0, 0, 0, 0xFFFF, 0);
     comm_tx_send(&msg);
     vTaskDelay(pdMS_TO_TICKS(500));
-    xTaskNotifyWait(pdFALSE, pdTRUE, &notif, 0);
+    xTaskNotifyWait(pdFALSE, 0, &notif, 0);
     if (notif & SENSOR_CALIBRATION_STOP) {
+      notif &= ~SENSOR_CALIBRATION_STOP;
       break;
     }
   }
 
   // wait for calibration parameters to arrive
   while (true) {
-    xTaskNotifyWait(pdFALSE, pdTRUE, &notif, portMAX_DELAY);
+    xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY);
     if (notif & SENSOR_LOAD_PARAMS) {
+      notif &= ~SENSOR_LOAD_PARAMS;
       // TODO: Load into non-volatile memory
       break;
     }

@@ -79,7 +79,7 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
   mpu6050_raw_t val;
   uint8_t rx_data[14] = {0};
   status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
-  xTaskNotifyWait(pdFALSE, pdTRUE, &notif, portMAX_DELAY);
+  xTaskNotifyWait(pdFALSE, 0x8000, &notif, portMAX_DELAY);
   if (notif == 0x8000) {
 
     val.accel_x = (rx_data[0] << 8) | rx_data[1];

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "API.h"
+#include "Config.h"
 #include "FreeRTOS.h"
 #include "cmsis_os.h"
 #include "imu.h"
@@ -31,6 +32,7 @@ extern osThreadId_t TaskStartupHandle;
 extern osThreadId_t TaskCommRxHandle;
 
 extern StreamBufferHandle_t crsfStream;
+extern StreamBufferHandle_t commRXStream;
 extern state_t state;
 extern SemaphoreHandle_t imu_mutex;
 
@@ -52,8 +54,10 @@ void TaskCommRx(void *arg);
 
 void Radio_UART_RxHalfCpltHandler();
 void Radio_UART_RxCpltHandler();
+void CommRx_UART_RxHalfCpltHandler();
 void CommRx_UART_RxCpltHandler();
 void Logging_UART_TxCpltHandler();
 void Flash_SPI_TxCpltHanlder();
 void Flash_SPI_TxRxCpltHandler();
 void TIM3_TaskNotifyISR();
+void CommRx_UARTEx_RxEventHandler(uint16_t Size);

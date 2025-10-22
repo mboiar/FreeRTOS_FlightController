@@ -62,8 +62,6 @@ void Error_Handler(void);
 #define BUTTON_GPIO_Pin GPIO_PIN_0
 #define BUTTON_GPIO_GPIO_Port GPIOA
 #define BUTTON_GPIO_EXTI_IRQn EXTI0_IRQn
-#define ESC_CR_Pin GPIO_PIN_1
-#define ESC_CR_GPIO_Port GPIOA
 #define UART_RADIO_TX_Pin GPIO_PIN_2
 #define UART_RADIO_TX_GPIO_Port GPIOA
 #define UART_RADIO_RX_Pin GPIO_PIN_3

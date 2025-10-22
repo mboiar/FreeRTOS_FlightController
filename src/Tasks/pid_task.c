@@ -16,7 +16,7 @@ void TaskFlightLoop(void *argument) {
   uint32_t tick = 0;
 
   for (;;) {
-    // run with 4 kHz freq
+    // run with 1 kHz freq
     if (ulTaskNotifyTake(pdFALSE, portMAX_DELAY) == pdTRUE) {
       tick++;
 

@@ -1,8 +1,11 @@
 #include "Tasks.h"
 #include "mpu6050.h"
+#include "stm32f4xx_hal_uart.h"
 #include "tim.h"
 #include "usart.h"
 #include "w25q64.h"
+
+uint32_t TIM3tick = 0;
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {}
 
@@ -33,6 +36,8 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart) {
   if (huart == &huart2) {
     Radio_UART_RxHalfCpltHandler();
+  } else if (huart == &huart1) {
+    CommRx_UART_RxHalfCpltHandler();
   }
 }
 
@@ -41,6 +46,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     Radio_UART_RxCpltHandler();
   } else if (huart == &huart1) {
     CommRx_UART_RxCpltHandler();
+  }
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
+  if (huart == &huart1) {
+    CommRx_UARTEx_RxEventHandler(Size);
   }
 }
 
@@ -64,17 +75,14 @@ void Flash_SPI_TxRxCpltHandler() {
 
 void TIM3_TaskNotifyISR() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  static uint32_t tick = 0;
 
-  tick++;
+  TIM3tick++; // 10 kHz
 
-  // 4 kHz
-  // xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
-  //                    &xHigherPriorityTaskWoken);
-
-  // 1 kHz
-  if (tick % 16 == 0) {
-    xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+  // 100 Hz
+  if (TIM3tick % 100 == 0) {
+    // xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+    //                    &xHigherPriorityTaskWoken);
+    xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
   }
 

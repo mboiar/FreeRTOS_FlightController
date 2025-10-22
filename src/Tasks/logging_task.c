@@ -1,7 +1,8 @@
 #include "Tasks.h"
+#include "main.h"
 #include "usart.h"
 
-// osThreadId_t TaskUARTLoggingHandle;
+static uint8_t data_buf[BUFFER_SIZE] = {0};
 
 /**
  * @brief Logs messages to serial port
@@ -10,22 +11,18 @@
  */
 void TaskUARTLogging(void *argument) {
   uint32_t ulNotifiedValue;
-  HAL_StatusTypeDef UARTStatus;
-  BaseType_t xQueueStatus;
-  BaseType_t xResult;
-  uint8_t data_buf[BUFFER_SIZE] = {0};
-  // uint8_t packet[PACKET_SIZE] = {0};
   size_t length;
-  TickType_t timestamp;
   mavlink_message_t msg;
+
   for (;;) {
-    // memset(data_buf, 0, sizeof(data_buf));
-    xQueueStatus = xQueueReceive(xLogQueue, &msg, portMAX_DELAY);
+    xQueueReceive(xLogQueue, &msg, portMAX_DELAY);
     length = mavlink_msg_to_send_buffer(data_buf, &msg);
-    UARTStatus = HAL_UART_Transmit_DMA(&huart1, data_buf, length);
+    if (HAL_UART_Transmit_DMA(&huart1, data_buf, length) != HAL_OK) {
+      Error_Handler();
+    };
+
     // Do NOT start another send until previous completed
-    xResult =
-        xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, portMAX_DELAY);
+    xTaskNotifyWait(pdFALSE, 0x01, &ulNotifiedValue, portMAX_DELAY);
   }
 }
 

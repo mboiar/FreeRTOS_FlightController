@@ -1,54 +1,65 @@
 #include "Program.h"
+#include "COnfig.h"
+#include "FreeRTOS.h"
+#include "Tasks.h"
 #include "cmsis_os.h"
+#include "cmsis_os2.h"
+#include "logger.h"
+#include "main.h"
+#include "stm32f4xx_hal_def.h"
+#include "stm32f4xx_hal_tim.h"
+#include "stm32f4xx_hal_uart.h"
 #include "tim.h"
+
+#include "Config.h"
+#include "usart.h"
 
 const osThreadAttr_t TaskSensor_attributes = {
     .name = "TaskSensor",
-    .stack_size = 128 * 32,
-    .priority = (osPriority_t)osPriorityHigh2,
+    .stack_size = TASK_SENSOR_STACK_SIZE,
+    .priority = (osPriority_t)TASK_SENSOR_PRIORITY,
 };
 
 const osThreadAttr_t TaskTelemetry_attributes = {
     .name = "TaskTelemetry",
-    .stack_size = 128 * 4,
-    .priority = (osPriority_t)osPriorityLow,
+    .stack_size = TASK_TELEM_STACK_SIZE,
+    .priority = (osPriority_t)TASK_TELEM_PRIORITY,
 };
 
 const osThreadAttr_t TaskRadioRX_attributes = {
     .name = "TaskRadioRX",
-    .stack_size = 128 * 4,
-    .priority = (osPriority_t)osPriorityAboveNormal,
+    .stack_size = TASK_RADIORX_STACK_SIZE,
+    .priority = (osPriority_t)TASK_RADIORX_PRIORITY,
 };
 
 const osThreadAttr_t TaskFlightLoop_attributes = {
     .name = "TaskFlightLoop",
-    .stack_size = 128 * 4,
-    .priority = (osPriority_t)osPriorityRealtime2,
+    .stack_size = TASK_FLIGHTLOOP_STACK_SIZE,
+    .priority = (osPriority_t)TASK_FLIGHTLOOP_PRIORITY,
 };
 
 const osThreadAttr_t TaskUARTLogging_attributes = {
     .name = "TaskUARTLogging",
-    .stack_size = 128 * 16,
-    .priority = (osPriority_t)osPriorityLow1,
+    .stack_size = TASK_LOGGING_STACK_SIZE,
+    .priority = (osPriority_t)TASK_LOGGING_PRIORITY,
 };
 
 const osThreadAttr_t TaskStartup_attributes = {
     .name = "TaskStartup",
-    .stack_size = 128 * 4,
-    .priority = (osPriority_t)osPriorityAboveNormal1,
+    .stack_size = TASK_STARTUP_STACK_SIZE,
+    .priority = (osPriority_t)TASK_STARTUP_PRIORITY,
 };
 
 const osThreadAttr_t TaskCommRx_attributes = {
     .name = "TaskCommRx",
-    .stack_size = 128 * 16,
-    .priority = (osPriority_t)osPriorityAboveNormal3,
+    .stack_size = TASK_COMMRX_STACK_SIZE,
+    .priority = (osPriority_t)TASK_COMMRX_PRIORITY,
 };
-
-const size_t LogQueueLen = 5;
 
 QueueHandle_t xLogQueue;
 state_t state;
 StreamBufferHandle_t crsfStream;
+StreamBufferHandle_t commRXStream;
 osThreadId_t TaskSensorHandle;
 osThreadId_t TaskTelemetryHandle;
 osThreadId_t TaskRadioRXHandle;
@@ -59,25 +70,68 @@ osThreadId_t TaskCommRxHandle;
 
 SemaphoreHandle_t imu_mutex;
 
+static uint8_t crsfStream_Storage[CRSF_BUFFER_SIZE + 1];
+static uint8_t commStream_Storage[COMM_BUFFER_SIZE + 1];
+
+static uint8_t logQueue_Storage[LOG_QUEUE_LEN * BUFFER_SIZE];
+static StaticStreamBuffer_t crsfStreamStruct;
+static StaticStreamBuffer_t commRXStreamStruct;
+static StaticQueue_t logQueueStruct;
+
 void Init() {
+
   HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim5);
 
-  crsfStream = xStreamBufferCreate(256, 20);
+  crsfStream = xStreamBufferCreateStatic(CRSF_BUFFER_SIZE, 64,
+                                         crsfStream_Storage, &crsfStreamStruct);
+  commRXStream = xStreamBufferCreateStatic(
+      COMM_BUFFER_SIZE, 1, commStream_Storage, &commRXStreamStruct);
+  if (crsfStream == NULL || commRXStream == NULL) {
+    Error_Handler();
+  }
+
   state.sysid = 1;
-  xLogQueue = xQueueCreate(LogQueueLen, BUFFER_SIZE);
 
-  SemaphoreHandle_t imu_mutex = xSemaphoreCreateMutex();
+  xLogQueue = xQueueCreateStatic(LOG_QUEUE_LEN, BUFFER_SIZE, logQueue_Storage,
+                                 &logQueueStruct);
+  if (xLogQueue == NULL) {
+    Error_Handler();
+  }
 
-  TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
-  TaskCommRxHandle = osThreadNew(TaskCommRx, NULL, &TaskCommRx_attributes);
-  TaskRadioRXHandle = osThreadNew(TaskRadioRX, NULL, &TaskRadioRX_attributes);
-  TaskTelemetryHandle =
-      osThreadNew(TaskTelemetry, NULL, &TaskTelemetry_attributes);
+  imu_mutex = xSemaphoreCreateMutex();
 
-  TaskFlightLoopHandle =
-      osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
   if (xLogQueue != NULL) {
     TaskUARTLoggingHandle =
         osThreadNew(TaskUARTLogging, NULL, &TaskUARTLogging_attributes);
+    if (TaskUARTLoggingHandle == NULL) {
+      Error_Handler();
+    }
   }
+  // TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
+  // if (TaskSensorHandle == NULL) {
+  //   Error_Handler();
+  // }
+  TaskCommRxHandle = osThreadNew(TaskCommRx, NULL, &TaskCommRx_attributes);
+  if (TaskCommRxHandle == NULL) {
+    Error_Handler();
+  }
+  TaskRadioRXHandle = osThreadNew(TaskRadioRX, NULL, &TaskRadioRX_attributes);
+  if (TaskRadioRXHandle == NULL) {
+    Error_Handler();
+  }
+  TaskTelemetryHandle =
+      osThreadNew(TaskTelemetry, NULL, &TaskTelemetry_attributes);
+  if (TaskTelemetryHandle == NULL) {
+    Error_Handler();
+  }
+
+  TaskFlightLoopHandle =
+      osThreadNew(TaskFlightLoop, NULL, &TaskFlightLoop_attributes);
+  if (TaskFlightLoopHandle == NULL) {
+    Error_Handler();
+  }
+
+  uint8_t buf[30] = "All tasks created";
+  HAL_UART_Transmit(&huart1, buf, sizeof(buf), HAL_MAX_DELAY);
 }
