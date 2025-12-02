@@ -20,10 +20,28 @@
 
 #define ENABLE_RUNTIME_STATS 1
 
-#define LOG_QUEUE_LEN 10
+#define LOG_QUEUE_LEN 5
 
 #define RADIORX_DMA_LEN 256
 #define COMMRX_DMA_LEN 400
 
 #define CRSF_BUFFER_SIZE 256
 #define COMM_BUFFER_SIZE 256
+
+#define RC_MAP_CH_ROLL 0
+#define RC_MAP_CH_PITCH 1
+#define RC_MAP_CH_YAW 2
+#define RC_MAP_CH_THROTTLE 3
+#define RC_MAP_CH_MODE 4
+#define RC_MAP_CH_ARM 5
+
+#define RC_ANGLE_MAX 30  // deg
+#define RC_ANGLE_MIN -30 // deg
+#define RC_VEL_MAX 15    // m/s
+#define RC_VEL_MIN -15   // m/s
+#define RC_VEL_RANGE (((float)RC_VEL_MAX - (float)RC_VEL_MIN))
+#define RC_VEL_MID (((float)RC_VEL_MIN + (float)RC_VEL_MAX) / 2.0f)
+
+#define HCSR04_SENSOR_COUNT 6
+#define HCSR04_TRIG_PORT GPIOB
+#define HCSR04_TRIG_PIN GPIO_PIN_12

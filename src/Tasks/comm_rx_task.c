@@ -93,8 +93,11 @@ void TaskCommRx(void *argument) {
             break;
           case MAV_CMD_REQUEST_MESSAGE:
             switch ((uint8_t)cmd.param1) {
-            case MAV_CMD_REQUEST_RC:
-              xTaskNotify(TaskRadioRXHandle, RADIORX_DEBUG_RADIO, eSetBits);
+            case MAV_CMD_REQUEST_RC_RAW:
+              xTaskNotify(TaskRadioRXHandle, RADIORX_REQUEST_RAW, eSetBits);
+              break;
+            case MAV_CMD_REQUEST_RC_SCALED:
+              xTaskNotify(TaskRadioRXHandle, RADIORX_REQUEST_SCALED, eSetBits);
               break;
             case MAV_CMD_REQUEST_EKF:
               xTaskNotify(TaskSensorHandle, SENSOR_DEBUG_EKF, eSetBits);

@@ -4,6 +4,8 @@
 #include "Config.h"
 #include "FreeRTOS.h"
 #include "cmsis_os.h"
+#include "crsf.h"
+#include "hcsr04.h"
 #include "imu.h"
 #include "logger.h"
 #include "semphr.h"
@@ -36,6 +38,12 @@ extern StreamBufferHandle_t commRXStream;
 extern state_t state;
 extern SemaphoreHandle_t imu_mutex;
 
+// extern uint16_t HCSR04_ECHO_PIN[HCSR04_SENSOR_COUNT];
+// extern GPIO_TypeDef *HCSR04_ECHO_PORT[HCSR04_SENSOR_COUNT];
+// extern hcsr04_sensor_t sensors[HCSR04_SENSOR_COUNT];
+
+extern crsf_rc_t rc_data;
+
 extern float magcal_offset[3];
 extern float magcal_mat[3][3];
 extern float mag_decl;
@@ -61,3 +69,4 @@ void Flash_SPI_TxCpltHanlder();
 void Flash_SPI_TxRxCpltHandler();
 void TIM3_TaskNotifyISR();
 void CommRx_UARTEx_RxEventHandler(uint16_t Size);
+void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin);

@@ -51,17 +51,10 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(BUZZER_OUT_GPIO_Port, BUZZER_OUT_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI1_CS_GPIO_Port, SPI1_CS_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : BUZZER_OUT_Pin */
-  GPIO_InitStruct.Pin = BUZZER_OUT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(BUZZER_OUT_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(TRIG_PIN_GPIO_Port, TRIG_PIN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : BUTTON_GPIO_Pin */
   GPIO_InitStruct.Pin = BUTTON_GPIO_Pin;
@@ -76,11 +69,32 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(SPI1_CS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : I2C1_INT_Pin */
-  GPIO_InitStruct.Pin = I2C1_INT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  /*Configure GPIO pins : ECHO4_PIN_Pin ECHO2_PIN_Pin ECHO3_PIN_Pin ECHO0_PIN_Pin
+                           ECHO1_PIN_Pin */
+  GPIO_InitStruct.Pin = ECHO4_PIN_Pin|ECHO2_PIN_Pin|ECHO3_PIN_Pin|ECHO0_PIN_Pin
+                          |ECHO1_PIN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(I2C1_INT_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : TRIG_PIN_Pin */
+  GPIO_InitStruct.Pin = TRIG_PIN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(TRIG_PIN_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PG_Pin */
+  GPIO_InitStruct.Pin = PG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(PG_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ECHO5_PIN_Pin */
+  GPIO_InitStruct.Pin = ECHO5_PIN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(ECHO5_PIN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);

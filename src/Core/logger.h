@@ -9,11 +9,23 @@
 #define BUFFER_SIZE MAVLINK_MAX_PACKET_LEN
 #define PACKET_SIZE 128
 
+typedef enum {
+  FLIGHT_MODE_LOITER,
+  FLIGHT_MODE_AUTO,
+  FLIGHT_MODE_GUIDED,
+  FLIGHT_MODE_RTL,
+  FLIGHT_MODE_LAND,
+  FLIGHT_MODE_ALTHOLD
+} FLIGHT_MODE;
+
+typedef enum { LOCKED, MANUAL, GUIDED } SYS_MODE;
+
 typedef struct {
   uint8_t sysid;
   mavlink_control_system_state_t ctrl_sys_state;
-  uint8_t mode;
-  uint8_t sys_status;
+  FLIGHT_MODE custom_mode;
+  SYS_MODE sys_mode;
+  uint8_t nav_mode;
 } state_t;
 
 extern QueueHandle_t xLogQueue;

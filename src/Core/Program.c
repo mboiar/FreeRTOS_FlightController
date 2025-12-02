@@ -83,7 +83,7 @@ void Init() {
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start_IT(&htim5);
 
-  crsfStream = xStreamBufferCreateStatic(CRSF_BUFFER_SIZE, 64,
+  crsfStream = xStreamBufferCreateStatic(CRSF_BUFFER_SIZE, 1,
                                          crsfStream_Storage, &crsfStreamStruct);
   commRXStream = xStreamBufferCreateStatic(
       COMM_BUFFER_SIZE, 1, commStream_Storage, &commRXStreamStruct);
@@ -108,10 +108,10 @@ void Init() {
       Error_Handler();
     }
   }
-  // TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
-  // if (TaskSensorHandle == NULL) {
-  //   Error_Handler();
-  // }
+  TaskSensorHandle = osThreadNew(TaskSensor, NULL, &TaskSensor_attributes);
+  if (TaskSensorHandle == NULL) {
+    Error_Handler();
+  }
   TaskCommRxHandle = osThreadNew(TaskCommRx, NULL, &TaskCommRx_attributes);
   if (TaskCommRxHandle == NULL) {
     Error_Handler();

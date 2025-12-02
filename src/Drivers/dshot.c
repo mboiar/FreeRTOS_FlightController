@@ -34,24 +34,29 @@ static uint16_t dshot_pwm_buf3[DSHOT_DMA_BUF_SIZE];
 static uint32_t ticks_per_bit = 0;
 
 static uint32_t dshot_type_to_ticks_per_bit(dshot_type_t type) {
-  uint32_t timer_freq = HAL_RCC_GetPCLK1Freq();
-  return (timer_freq / (htim_esc->Init.Prescaler + 1) +
-          (dshotTYPE_TO_HZ(type) / 2)) /
-         dshotTYPE_TO_HZ(type);
+  uint32_t timer_freq = HAL_RCC_GetPCLK2Freq();
+  // return (timer_freq / (htim_esc->Init.Prescaler + 1) +
+  //         (dshotTYPE_TO_HZ(type) / 2)) /
+  //        dshotTYPE_TO_HZ(type);
+  return timer_freq / (dshotTYPE_TO_HZ(type));
 }
 
 // Initialize DSHOT communication
 // @param dshot_type DSHOT frequency
 void dshot_init(dshot_type_t type) {
   ticks_per_bit = dshot_type_to_ticks_per_bit(type);
-  htim_esc->Init.Period = ticks_per_bit - 1;
+  htim_esc->Instance->PSC = 0;
+  htim_esc->Instance->ARR = ticks_per_bit - 1;
+  // htim_esc->Init.Period = ticks_per_bit - 1;
 }
 
 static void dshot_build_pwm(uint16_t *buf, uint16_t frame) {
-  uint16_t ticks_t1h = (uint16_t)((ticks_per_bit * 76) / 100);
   for (size_t i = 0; i < 16; i++) {
-    buf[i] = ((frame >> (15 - i)) & 0x1) ? ticks_t1h : ticks_t1h / 2;
+    buf[i] = (frame & 0x8000) ? (htim_esc->Instance->ARR * 76) / 100
+                              : (htim_esc->Instance->ARR * 38) / 100;
+    frame <<= 1;
   }
+  buf[16] = 0;
 }
 
 static uint16_t dshot_pack(uint16_t throttle, uint8_t telem) {
@@ -62,18 +67,18 @@ static uint16_t dshot_pack(uint16_t throttle, uint8_t telem) {
   return (value << 4) | crc;
 }
 
-int dshot_write(uint16_t data, uint8_t telem) {
+int dshot_write(uint16_t data, uint8_t telem, uint8_t ch) {
   uint16_t frame = dshot_pack(data, telem);
   dshot_build_pwm(dshot_pwm_buf0, frame);
 
-  HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop_DMA(&htim1, ch);
   // TODO: burst write
   //   if (HAL_TIM_DMABurst_WriteStart(&htim1, TIM_DMABASE_CCR1, TIM_DMA_UPDATE,
   //   (uint32_t*)dshot_pwm_buf0, TIM_DMABURSTLENGTH_4TRANSFERS) != HAL_OK) {
   //     return -1;
   //   }
-  if (HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, (uint32_t *)dshot_pwm_buf0,
-                            16) != HAL_OK) {
+  if (HAL_TIM_PWM_Start_DMA(&htim1, ch, (uint32_t *)dshot_pwm_buf0,
+                            DSHOT_DMA_BUF_SIZE) != HAL_OK) {
     return -1;
   }
   return 0;
@@ -81,7 +86,18 @@ int dshot_write(uint16_t data, uint8_t telem) {
 
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim1) {
-    HAL_TIM_PWM_Stop_DMA(htim, TIM_CHANNEL_1);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+    HAL_TIM_PWM_Stop_DMA(htim, htim->Channel);
+    __HAL_TIM_SET_COMPARE(&htim1, htim->Channel, 0);
   }
+}
+
+int dshot_set_direction(uint8_t dir, uint8_t ch) {
+  uint16_t cmd;
+  if (dir == 0) {
+    cmd = DSHOT_CMD_SPIN_DIRECTION_NORMAL;
+  } else {
+    cmd = DSHOT_CMD_SPIN_DIRECTION_REVERSED;
+  }
+  dshot_write(cmd, 0, ch);
+  return 0;
 }
