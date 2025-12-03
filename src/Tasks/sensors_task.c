@@ -1,10 +1,12 @@
 #include "API.h"
 #include "Tasks.h"
 #include "common/mavlink.h"
+#include "hcsr04.h"
 #include "imu.h"
 #include "logger.h"
 #include "portmacro.h"
 #include "projdefs.h"
+#include "tim.h"
 #include "utils.h"
 
 typedef enum { INIT, CALIBRATING, READY } SENSORS_STATE;
@@ -15,6 +17,12 @@ static void sensors_init();
 
 sensor_data_t imu_data, tmp_data;
 SENSORS_STATE sstate;
+
+GPIO_TypeDef *HCSR04_ECHO_PORT[HCSR04_SENSOR_COUNT] = {GPIOB, GPIOB, GPIOB,
+                                                       GPIOB, GPIOB, GPIOA};
+
+uint16_t HCSR04_ECHO_PIN[HCSR04_SENSOR_COUNT] = {
+    GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_10, GPIO_PIN_13, GPIO_PIN_15, GPIO_PIN_12};
 
 BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
                                            .standby_time = 0, // 0.5 ms
@@ -51,12 +59,19 @@ gyro3d_t gyro_offset;
 
 static eskf_t eskf;
 
-TickType_t tick_end, tick_start;
+bool distance_sensor_ready_all = false;
+
+TickType_t tick_end, tick_start, last_dist_tick;
 
 float sigma_ww = 0, sigma_wn = 0, sigma_an = 0, sigma_aw = 0, sigma_mag = 0,
       sigma_baro = 0;
 
-static float PVcov[15], Qcov[9];
+// static float PVcov[15], Qcov[9];
+
+hcsr04_sensor_t dist_sensors[HCSR04_SENSOR_COUNT];
+static float dist_buf[HCSR04_SENSOR_COUNT][5];
+int dist_meas_cnt = 0;
+static bool dist_filter_init[HCSR04_SENSOR_COUNT] = {0};
 
 /**
  * @brief Task to handle sensor operations
@@ -85,7 +100,7 @@ void TaskSensor(void *argument) {
           if (tick % 10 == 0) { // 100 Hz
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
-              eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww);
+              // eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww);
               last_tick = xTaskGetTickCount();
               sstate = READY;
             }
@@ -93,11 +108,13 @@ void TaskSensor(void *argument) {
 
         } else if (sstate == READY) {
           tick_start = xTaskGetTickCount();
-          mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG,
-                            &offA, scaleA);
+          if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
+                                &offG, &offA, scaleA) != HAL_OK) {
+            // TODO: handle error
+          }
           dt = cur_tick - last_tick;
-          eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
-                       (float)((dt > 0.0f) ? dt : 1.0f));
+          // eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
+          //              (float)((dt > 0.0f) ? dt : 1.0f));
           last_tick = cur_tick;
 
           tick_end = xTaskGetTickCount();
@@ -106,31 +123,88 @@ void TaskSensor(void *argument) {
               (float)(tick_end - tick_start), 0, 1, 0);
           // comm_tx_send(&msg);
           if (tick % 10 == 0) { // 100 Hz
-            bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp,
-                             pp); // blocking
+            if (bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp, pp) !=
+                HAL_OK) {
+              // TODO Handle error
+            }
             tmp_data.alt =
                 bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
-            qmc5883_read_data(&mag, magcal_offset, magcal_mat);
-            tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
-            eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
-            eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
-            eskf_get_cov_posvel(&eskf, PVcov);
-            eskf_get_cov_quat(&eskf, Qcov);
-            xTaskNotifyWait(pdFALSE, 0, &notif, 0);
-            if (notif & SENSOR_DEBUG_EKF) {
-              notif &= ~SENSOR_DEBUG_EKF;
-              msglen = mavlink_msg_attitude_quaternion_cov_pack(
-                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
-                  0, 0, Qcov);
-              // comm_tx_send(&msg);
-              msglen = mavlink_msg_local_position_ned_cov_pack(
-                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                  MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0],
-                  eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
-                  eskf.state.vel[1], eskf.state.vel[2], 0, 0, 0, PVcov);
-              // comm_tx_send(&msg);
-              //  vTaskDelay(pdMS_TO_TICKS(300));
+            if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) != HAL_OK) {
+              // TODO Handle error
             }
+            tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+
+            msglen = mavlink_msg_highres_imu_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                tmp_data.accel.accel_x, tmp_data.accel.accel_y,
+                tmp_data.accel.accel_z, tmp_data.gyro.gyro_x,
+                tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_z, mag.MagX, mag.MagY,
+                mag.MagZ, bmp_pressure, bmp_pressure - p_ref, tmp_data.alt,
+                tmp_data.bmp_temp, 0xFFFF, 0);
+            comm_tx_send(&msg);
+
+            // eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
+            // eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            // eskf_get_cov_posvel(&eskf, PVcov);
+            // eskf_get_cov_quat(&eskf, Qcov);
+
+            distance_sensor_ready_all = true;
+            for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
+              if (dist_buf[i][dist_meas_cnt] <= 0) {
+                distance_sensor_ready_all = false;
+                break;
+              }
+            }
+            if (distance_sensor_ready_all ||
+                (xTaskGetTickCount() - last_dist_tick > 200)) {
+              if (dist_meas_cnt % 5 == 4) { // filter and report on buffer full
+                for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
+                  dist_sensors[i].last_distance_cm =
+                      filter_dist(dist_buf[i], dist_sensors[i].last_distance_cm,
+                                  0.5, &dist_filter_init[i], 0.3);
+                  // mavlink_msg_distance_sensor_pack(
+                  //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                  //     HCSR04_MIN_VALID_US, HCSR04_MAX_ECHO_US,
+                  //     dist_sensors[i].last_distance_cm,
+                  //     MAV_DISTANCE_SENSOR_ULTRASOUND, i,
+                  //     dist_sensors[i].orientation, UINT8_MAX, 0.52f, 0.52f,
+                  //     0, 0);
+                }
+                mavlink_msg_command_long_pack(
+                    1, MAV_COMP_ID_AUTOPILOT1, &msg, 2,
+                    MAV_COMP_ID_ONBOARD_COMPUTER, 5000, 0,
+                    dist_sensors[0].last_distance_cm,
+                    dist_sensors[1].last_distance_cm,
+                    dist_sensors[2].last_distance_cm,
+                    dist_sensors[3].last_distance_cm,
+                    dist_sensors[4].last_distance_cm,
+                    dist_sensors[5].last_distance_cm, cur_tick);
+                // comm_tx_send(&msg);
+              }
+
+              dist_meas_cnt++;
+              for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
+                hcsr04_reset(&dist_sensors[i]);
+              }
+              // hcsr04_trigger();
+              last_dist_tick = xTaskGetTickCount();
+            }
+
+            xTaskNotifyWait(pdFALSE, 0, &notif, 0);
+            // if (notif & SENSOR_DEBUG_EKF) {
+            // notif &= ~SENSOR_DEBUG_EKF;
+            // msglen = mavlink_msg_attitude_quaternion_cov_pack(
+            //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat,
+            //     0, 0, 0, Qcov);
+            // comm_tx_send(&msg);
+            // msglen = mavlink_msg_local_position_ned_cov_pack(
+            //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+            //     MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0],
+            //     eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
+            //     eskf.state.vel[1], eskf.state.vel[2], 0, 0, 0, PVcov);
+            // comm_tx_send(&msg);
+            //  vTaskDelay(pdMS_TO_TICKS(300));
+            // }
           }
 
           if (imu_mutex != NULL) {
@@ -149,9 +223,13 @@ static void sensors_calibrate() {
 
   // collect calibration data
   while (true) {
-    mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
-                      scaleA); // DMA
-    qmc5883_read_data(&mag, magcal_offset, magcal_mat);
+    if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG,
+                          &offA, scaleA) != HAL_OK) {
+      // TODO handle error
+    }
+    if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) != HAL_OK) {
+      // TODO handle error
+    }
 
     cur_tick = xTaskGetTickCount();
     msglen = mavlink_msg_highres_imu_pack(
@@ -244,12 +322,18 @@ static void sensors_init() {
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Mag: Ready\r\n");
   }
+
+  for (int i = 0; i < HCSR04_SENSOR_COUNT; i++) {
+    hcsr04_init(&dist_sensors[i]);
+  }
+  // hcsr04_trigger();
+  last_dist_tick = xTaskGetTickCount();
 }
 
 static uint8_t sensors_calibrate_stationary() {
   static size_t calib_tick;
   calib_tick++;
-  if (calib_tick == 300) {
+  if (calib_tick == 100) {
     return 1;
   }
   mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
@@ -265,4 +349,36 @@ static uint8_t sensors_calibrate_stationary() {
   gyro_offset.gyro_z = gyro_offset.gyro_z * (calib_tick - 1) / calib_tick +
                        tmp_data.gyro.gyro_z / calib_tick;
   return 0;
+}
+
+void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
+  for (int i = 0; i < HCSR04_SENSOR_COUNT; ++i) {
+    if (HCSR04_ECHO_PIN[i] == GPIO_Pin) {
+      /* Read the pin level to determine rising vs falling */
+      GPIO_PinState level =
+          HAL_GPIO_ReadPin(HCSR04_ECHO_PORT[i], HCSR04_ECHO_PIN[i]);
+      if (level == GPIO_PIN_SET) {
+        /* Rising edge */
+        dist_sensors[i].t_start_us = htim3.Instance->CNT;
+        dist_sensors[i].state = 2; /* WAIT_FALLING */
+      } else {
+        /* Falling edge */
+        if (dist_sensors[i].state == 2 && dist_sensors[i].t_start_us != 0) {
+          uint32_t dur = htim3.Instance->CNT - dist_sensors[i].t_start_us;
+          dist_sensors[i].duration_us = dur;
+
+          if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
+            dist_buf[i][dist_meas_cnt % 5] = duration_to_dist(dur, 22.2);
+          } else {
+            dist_buf[i][dist_meas_cnt % 5] = -1.0f; /* invalid */
+          }
+        } else {
+          dist_sensors[i].duration_us = 0;
+          dist_buf[i][dist_meas_cnt % 5] = -1.0f;
+        }
+        dist_sensors[i].state = 0; /* IDLE after measurement */
+      }
+      break;
+    }
+  }
 }

@@ -44,7 +44,7 @@ void TaskFlightLoop(void *argument) {
       vTaskDelay(pdMS_TO_TICKS(1));
     }
   } else {
-    init_pwm();
+    // init_pwm();
     // arming
     pwm_set_pulse_us(&htim1, TIM_CHANNEL_2, 1000); // idle
   }

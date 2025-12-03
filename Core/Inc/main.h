@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define LED_Alive_Pin GPIO_PIN_13
+#define LED_Alive_GPIO_Port GPIOC
 #define BUTTON_GPIO_Pin GPIO_PIN_0
 #define BUTTON_GPIO_GPIO_Port GPIOA
 #define BUTTON_GPIO_EXTI_IRQn EXTI0_IRQn
@@ -68,18 +70,23 @@ void Error_Handler(void);
 #define SPI1_CS_GPIO_Port GPIOA
 #define ECHO4_PIN_Pin GPIO_PIN_1
 #define ECHO4_PIN_GPIO_Port GPIOB
+#define ECHO4_PIN_EXTI_IRQn EXTI1_IRQn
 #define ECHO2_PIN_Pin GPIO_PIN_2
 #define ECHO2_PIN_GPIO_Port GPIOB
+#define ECHO2_PIN_EXTI_IRQn EXTI2_IRQn
 #define ECHO3_PIN_Pin GPIO_PIN_10
 #define ECHO3_PIN_GPIO_Port GPIOB
+#define ECHO3_PIN_EXTI_IRQn EXTI15_10_IRQn
 #define TRIG_PIN_Pin GPIO_PIN_12
 #define TRIG_PIN_GPIO_Port GPIOB
 #define ECHO0_PIN_Pin GPIO_PIN_13
 #define ECHO0_PIN_GPIO_Port GPIOB
+#define ECHO0_PIN_EXTI_IRQn EXTI15_10_IRQn
 #define PG_Pin GPIO_PIN_14
 #define PG_GPIO_Port GPIOB
 #define ECHO1_PIN_Pin GPIO_PIN_15
 #define ECHO1_PIN_GPIO_Port GPIOB
+#define ECHO1_PIN_EXTI_IRQn EXTI15_10_IRQn
 #define TIM_MOTOR1_Pin GPIO_PIN_8
 #define TIM_MOTOR1_GPIO_Port GPIOA
 #define TIM_MOTOR2_Pin GPIO_PIN_9
@@ -90,12 +97,11 @@ void Error_Handler(void);
 #define TIM_MOTOR4_GPIO_Port GPIOA
 #define ECHO5_PIN_Pin GPIO_PIN_12
 #define ECHO5_PIN_GPIO_Port GPIOA
+#define ECHO5_PIN_EXTI_IRQn EXTI15_10_IRQn
 #define UART_RPI_TX_Pin GPIO_PIN_15
 #define UART_RPI_TX_GPIO_Port GPIOA
 #define UART_RPI_RX_Pin GPIO_PIN_3
 #define UART_RPI_RX_GPIO_Port GPIOB
-#define BUZZER_OUT_Pin GPIO_PIN_7
-#define BUZZER_OUT_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

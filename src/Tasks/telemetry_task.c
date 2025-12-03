@@ -20,6 +20,7 @@ void TaskTelemetry(void *argument) {
                                MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_GENERIC,
                                MAV_MODE_PREFLIGHT, 0, MAV_STATE_CALIBRATING);
     comm_tx_send(&msg);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
     xTaskNotifyWait(pdFALSE, 0, &notif, 0);
     if (notif & TELEM_GET_RUNTIME_STATS) {

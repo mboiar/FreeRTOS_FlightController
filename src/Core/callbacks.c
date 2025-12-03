@@ -7,7 +7,9 @@
 
 uint32_t TIM3tick = 0;
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {}
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  DistanceSensor_RxCpltCallback(GPIO_Pin);
+}
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
   if (hi2c == &hi2c1) {
@@ -78,10 +80,10 @@ void TIM3_TaskNotifyISR() {
 
   TIM3tick++; // 10 kHz
 
-  // 100 Hz
-  if (TIM3tick % 100 == 0) {
-    // xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
-    //                    &xHigherPriorityTaskWoken);
+  // 1000 Hz
+  if (TIM3tick % 10 == 0) {
+    xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+                       &xHigherPriorityTaskWoken);
     xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
   }

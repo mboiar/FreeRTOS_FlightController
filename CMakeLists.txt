@@ -86,3 +86,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 )
 
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wno-address-of-packed-member)
+
+target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-Map=${PROJECT_NAME}.map")
