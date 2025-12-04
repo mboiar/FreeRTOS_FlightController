@@ -69,6 +69,9 @@ typedef struct {
 /* Read MPU6050 register in blocking mode */
 HAL_StatusTypeDef mpu6050_read_reg(uint8_t reg, uint8_t *value);
 
+HAL_StatusTypeDef mpu6050_set_gyro_accel_config(uint8_t fs_sel,
+                                                uint8_t afs_sel);
+
 /* Write MPU6050 register */
 HAL_StatusTypeDef mpu6050_write_reg(uint8_t reg, uint8_t data);
 

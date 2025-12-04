@@ -311,14 +311,24 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
 }
 
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
-               float sigma_ww) {
-  eskf_state_t st = {.pos = {0, 0, 0},
-                     .vel = {0, 0, 0},
-                     .quat = {1, 0, 0, 0},
-                     .acc_b = {0, 0, 0},
-                     .gyro_b = {0, 0, 0},
-                     .g = {0, 0, -9.81}};
+               float sigma_ww, gyro3d_t *gyro_init, float yaw_init,
+               accel3d_t *accel_init) {
+  eskf_state_t st = {
+      .pos = {0, 0, 0},
+      .vel = {0, 0, 0},
+      .quat = {1, 0, 0, 0},
+      .acc_b = {0, 0, 0},
+      .gyro_b = {gyro_init->gyro_x, gyro_init->gyro_y, gyro_init->gyro_z},
+      .g = {0, 0, -9.81}};
   eskf->state = st;
+  float roll_init = atan2f(accel_init->accel_y, accel_init->accel_z);
+  float pitch_init = atan2f(-accel_init->accel_x,
+                            sqrtf(accel_init->accel_y * accel_init->accel_y +
+                                  accel_init->accel_z * accel_init->accel_z));
+  float rot_v[3] = {roll_init, pitch_init, yaw_init};
+  rot_to_quat(eskf->dx.quat, rot_v);
+  quat_mul(eskf->state.quat, eskf->state.quat, eskf->dx.quat);
+
   memset(eskf->P, 0, sizeof(eskf->P));
   memset(F_data, 0, sizeof(F_data));
   memset(Q_data, 0, sizeof(Q_data));

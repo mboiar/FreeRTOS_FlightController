@@ -31,7 +31,7 @@ BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
 BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
     .mode = BMP_NORMAL,
     .temp_oversampling = 1,     // x1
-    .pressure_oversampling = 3, // x4
+    .pressure_oversampling = 4, // x8
 };
 
 float mpu_temp;
@@ -98,10 +98,21 @@ void TaskSensor(void *argument) {
         notif &= ~SENSOR_MEASURE;
         tick++;
         if (sstate == CALIBRATING) {
-          if (tick % 10 == 0) { // 100 Hz
+          if (tick % 2 == 0) { // 100 Hz
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
-              eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww);
+              if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
+                                    &gyro_offset, &offA, scaleA) != HAL_OK) {
+                // TODO: handle error
+              }
+              if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) !=
+                  HAL_OK) {
+                // TODO Handle error
+              }
+              tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+
+              eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
+                        &gyro_offset, tmp_data.heading, &tmp_data.accel);
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
               sstate = READY;
             }
@@ -145,12 +156,12 @@ void TaskSensor(void *argument) {
                 tmp_data.bmp_temp, 0xFFFF, 0);
             comm_tx_send(&msg);
 
-            // eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
-            // eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
-            // eskf_get_cov_posvel(&eskf, PVcov);
-            // eskf_get_cov_quat(&eskf, Qcov);
+            eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
+            eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            eskf_get_cov_posvel(&eskf, PVcov);
+            eskf_get_cov_quat(&eskf, Qcov);
           }
-          if (tick % 10 == 0) { // 20 Hz
+          if (tick % 20 == 0) { // 10 Hz
             if (dist_meas_cnt % HCSR04_BUFFER_LEN ==
                 HCSR04_BUFFER_LEN - 1) { // filter and report on buffer full
               for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
@@ -187,17 +198,17 @@ void TaskSensor(void *argument) {
           xTaskNotifyWait(pdFALSE, 0, &notif, 0);
           // if (notif & SENSOR_DEBUG_EKF) {
           // notif &= ~SENSOR_DEBUG_EKF;
-          // msglen = mavlink_msg_attitude_quaternion_cov_pack(
-          //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat,
-          //     0, 0, 0, Qcov);
-          // comm_tx_send(&msg);
-          // msglen = mavlink_msg_local_position_ned_cov_pack(
-          //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-          //     MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0],
-          //     eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
-          //     eskf.state.vel[1], eskf.state.vel[2], 0, 0, 0, PVcov);
-          // comm_tx_send(&msg);
-          //  vTaskDelay(pdMS_TO_TICKS(300));
+          msglen = mavlink_msg_attitude_quaternion_cov_pack(
+              1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0, 0,
+              0, Qcov);
+          comm_tx_send(&msg);
+          msglen = mavlink_msg_local_position_ned_cov_pack(
+              1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+              MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
+              eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
+              eskf.state.vel[2], 0, 0, 0, PVcov);
+          comm_tx_send(&msg);
+
           // }
 
           // if (imu_mutex != NULL) {
@@ -260,7 +271,8 @@ static void sensors_init() {
   mpu6050_user_ctrl(0);
   if ((mpu6050_set_power_options(CLKSEL_PLLX, 0) != HAL_OK) ||
       (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN,
-                          SMPRT_DIV) != HAL_OK)) {
+                          SMPRT_DIV) != HAL_OK) ||
+      mpu6050_set_gyro_accel_config(FS_SEL_250, 0)) {
     LOG_CRIT(TASK_SENSOR_ID, "Accel: couldn't configure");
     // TODO: handle error
   } else {
@@ -346,22 +358,22 @@ void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   size_t i;
   switch (GPIO_Pin) {
-  case 1:
+  case GPIO_PIN_1:
     i = 0;
     break;
-  case 2:
+  case GPIO_PIN_2:
     i = 1;
     break;
-  case 10:
+  case GPIO_PIN_10:
     i = 2;
     break;
-  case 12:
+  case GPIO_PIN_12:
     i = 3;
     break;
-  case 13:
+  case GPIO_PIN_13:
     i = 4;
     break;
-  case 15:
+  case GPIO_PIN_15:
     i = 5;
     break;
   default:

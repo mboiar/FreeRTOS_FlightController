@@ -19,6 +19,12 @@
 #define MPU6050_INT_PIN_CFG 0x37
 #define MPU6050_INT_ENABLE 0x38
 
+#define MPU6050_GYRO_CONFIG 0x1B
+#define MPU6050_ACCEL_CONFIG 0x1C
+
+#define MPU6050_FS_SEL_OFFSET 3
+#define MPU6050_AFS_SEL_OFFSET 3
+
 #define MPU6050_MASTER_CTRL 0x24
 #define MPU6050_EXT_SENS_DATA_00 0x49
 #define MPU6050_I2C_MASTER_STATUS_REG 0x36
@@ -71,6 +77,18 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
   return mpu6050_write_reg(MPU6050_PWR_MGMT_2, opt1);
 }
 
+HAL_StatusTypeDef mpu6050_set_gyro_accel_config(uint8_t fs_sel,
+                                                uint8_t afs_sel) {
+  uint8_t config = (fs_sel & 0x01) << MPU6050_FS_SEL_OFFSET;
+  config |= (fs_sel & 0x02) << (MPU6050_FS_SEL_OFFSET + 1);
+  if (mpu6050_write_reg(MPU6050_GYRO_CONFIG, config) != HAL_OK) {
+    return HAL_ERROR;
+  }
+  config = (afs_sel & 0x01) << MPU6050_AFS_SEL_OFFSET;
+  config |= (afs_sel & 0x02) << (MPU6050_AFS_SEL_OFFSET + 1);
+  return mpu6050_write_reg(MPU6050_ACCEL_CONFIG, config);
+}
+
 HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
                                     const gyro3d_t *offG, const accel3d_t *offA,
                                     float scaleA[3]) {
@@ -86,10 +104,10 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
     val.accel_x = (rx_data[0] << 8) | rx_data[1];
     val.accel_y = (rx_data[2] << 8) | rx_data[3];
     val.accel_z = (rx_data[4] << 8) | rx_data[5];
-    val.gyro_x = (rx_data[6] << 8) | rx_data[7];
-    val.gyro_y = (rx_data[8] << 8) | rx_data[9];
-    val.gyro_z = (rx_data[10] << 8) | rx_data[11];
-    val.temp = (rx_data[12] << 8) | rx_data[13];
+    val.temp = (rx_data[6] << 8) | rx_data[7];
+    val.gyro_x = (rx_data[8] << 8) | rx_data[9];
+    val.gyro_y = (rx_data[10] << 8) | rx_data[11];
+    val.gyro_z = (rx_data[12] << 8) | rx_data[13];
     acc->accel_x =
         (mpu6050_calc_accel(val.accel_x, ACCEL_FS_2G) - offA->accel_x) *
         scaleA[0];
@@ -99,9 +117,9 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
     acc->accel_z =
         (mpu6050_calc_accel(val.accel_z, ACCEL_FS_2G) - offA->accel_z) *
         scaleA[2];
-    gyro->gyro_x = mpu6050_calc_gyro(val.gyro_x, FS_SEL_250) - offG->gyro_x;
-    gyro->gyro_y = mpu6050_calc_gyro(val.gyro_y, FS_SEL_250) - offG->gyro_y;
-    gyro->gyro_z = mpu6050_calc_gyro(val.gyro_z, FS_SEL_250) - offG->gyro_z;
+    gyro->gyro_x = mpu6050_calc_gyro(val.gyro_x, FS_SEL_250); // - offG->gyro_x;
+    gyro->gyro_y = mpu6050_calc_gyro(val.gyro_y, FS_SEL_250); // - offG->gyro_y;
+    gyro->gyro_z = mpu6050_calc_gyro(val.gyro_z, FS_SEL_250); // - offG->gyro_z;
     *temp = mpu6050_calc_temp(val.temp);
 
     return HAL_OK;
@@ -112,7 +130,7 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
 }
 
 float mpu6050_calc_temp(int16_t raw_temp) {
-  return (float)raw_temp / 340.0 + 36.53;
+  return (float)raw_temp / 340.0f + 36.53f;
 }
 
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale) {

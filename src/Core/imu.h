@@ -43,7 +43,8 @@ typedef struct {
  * @retval None
  */
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
-               float sigma_ww);
+               float sigma_ww, gyro3d_t *gyro_bm, float yaw_init,
+               accel3d_t *accel_init);
 
 /**
  * @brief ESKF prediction step.
