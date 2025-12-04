@@ -235,5 +235,5 @@ HAL_StatusTypeDef bmp_acquire_data(float *press, float *temp,
 
 float bmp280_get_altitude(float p, float pref, float T) {
   const float lapse_rate = 0.0065;
-  return (T + 273.15 / lapse_rate) * (1.0 - powf(p / pref, 0.1903));
+  return ((T + 273.15) / lapse_rate) * (1.0 - powf(p / pref, 0.1903));
 }

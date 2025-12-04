@@ -29,4 +29,4 @@ void hcsr04_trigger();
 float duration_to_dist(float dur_s, float temperature);
 
 float filter_dist(const float *buf, float last_val, float alpha, bool *init,
-                  float outlier_thresh);
+                  float outlier_thresh, int len);

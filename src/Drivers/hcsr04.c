@@ -36,10 +36,10 @@ void hcsr04_trigger() {
 
 float duration_to_dist(float dur_us, float temperature) {
   float soundSpeed = (331.4 + (0.606 * temperature));
-  return soundSpeed * dur_us / 1e4;
+  return soundSpeed * dur_us / 10000.0f;
 }
 
-static float median5(float *arr) {
+static float median5(const float *arr) {
   float t, a = arr[0], b = arr[1], c = arr[2], d = arr[3], e = arr[4];
 
 #define SWAP(x, y)                                                             \
@@ -61,21 +61,40 @@ static float median5(float *arr) {
 
 #undef SWAP
 
-  return c; // c is now the median
+  return c;
+}
+
+static float median3(const float *arr) {
+  float t, a = arr[0], b = arr[1], c = arr[2];
+
+#define SWAP(x, y)                                                             \
+  if ((x) > (y)) {                                                             \
+    t = (x);                                                                   \
+    (x) = (y);                                                                 \
+    (y) = t;                                                                   \
+  }
+
+  SWAP(a, b)
+  SWAP(b, c)
+
+#undef SWAP
+
+  return b;
 }
 
 static float median_filter(const float *buf, int len) {
   if (len == 5) {
     return median5(buf);
+  } else {
+    return median3(buf);
   }
-  return -1;
 }
 
 float filter_dist(const float *buf, float last_val, float alpha, bool *init,
-                  float outlier_thresh) {
+                  float outlier_thresh, int len) {
 
   // median
-  float res = median_filter(buf, 5);
+  float res = median_filter(buf, len);
 
   if (!(*init)) {
     *init = true;

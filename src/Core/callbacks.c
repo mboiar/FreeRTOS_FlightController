@@ -11,6 +11,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   DistanceSensor_RxCpltCallback(GPIO_Pin);
 }
 
+// void EXTI1_IRQHandler(void) { DistanceSensor_RxCpltCallback(0); }
+// void EXTI2_IRQHandler(void) { DistanceSensor_RxCpltCallback(1); }
+// void EXTI10_IRQHandler(void) { DistanceSensor_RxCpltCallback(2); }
+// void EXTI15_IRQHandler(void) { DistanceSensor_RxCpltCallback(3); }
+// void EXTI13_IRQHandler(void) { DistanceSensor_RxCpltCallback(4); }
+// void EXTI12_IRQHandler(void) { DistanceSensor_RxCpltCallback(5); }
+
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
   if (hi2c == &hi2c1) {
     IMU_RxCpltCallback();
@@ -80,8 +87,8 @@ void TIM3_TaskNotifyISR() {
 
   TIM3tick++; // 10 kHz
 
-  // 1000 Hz
-  if (TIM3tick % 10 == 0) {
+  // 200 Hz
+  if (TIM3tick % 50 == 0) {
     xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
                        &xHigherPriorityTaskWoken);
     xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
