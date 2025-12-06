@@ -30,7 +30,11 @@ void hcsr04_reset(hcsr04_sensor_t *sensor) {
 
 void hcsr04_trigger() {
   HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_SET);
-  vTaskDelay(pdMS_TO_TICKS(HCSR04_TRIGGER_PULSE_US)); // ??
+  uint32_t start = TIM3->CNT;
+  uint32_t target = start + 10; // 10 us
+  while ((int32_t)(TIM3->CNT - target) < 0) {
+  }
+  // vTaskDelay(pdMS_TO_TICKS(HCSR04_TRIGGER_PULSE_US)); // ??
   HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_RESET);
 }
 

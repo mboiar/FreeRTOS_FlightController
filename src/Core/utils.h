@@ -7,4 +7,4 @@
  * @param hi2c i2c handle
  * @retval None
  */
-void I2C_Scan(I2C_HandleTypeDef *hi2c);
+uint8_t I2C_Scan(I2C_HandleTypeDef *hi2c);

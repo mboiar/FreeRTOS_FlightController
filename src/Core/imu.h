@@ -59,7 +59,7 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
  * @brief ESKF update using magnetometer measurement.
  * @retval None
  */
-void eskf_update_yaw(eskf_t *eskf, float yaw, float cov);
+void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov);
 
 /**
  * @brief ESKF update using barometer measurement.

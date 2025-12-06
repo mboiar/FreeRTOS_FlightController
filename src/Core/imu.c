@@ -18,11 +18,11 @@
 // float gyro_rnsd = 0.005;  // deg/s/sqrt(Hz)
 
 static arm_matrix_instance_f32 F, P, Ft, Q, Ra, R, W, HPH, K, H, Ht, Pv;
-static float Ft_data[15 * 15], F_data[15 * 15], Q_data[15 * 15], K_data[3 * 3],
+static float Ft_data[15 * 15], F_data[15 * 15], Q_data[15 * 15], K_data[4 * 4],
     HPH_data[3 * 3], H_data[3 * 3], Ht_data[3 * 3], P_data[3 * 3];
-static float acc_glob[3];  // acceleration in global frame
-static float acc_body[3];  // acceleration in body frame
-static float gyro_body[3]; // angular velocity in body frame
+static float acc_glob[3];                    // acceleration in global frame
+static float acc_body[3];                    // acceleration in body frame
+static float gyro_body[3], gyro_body_int[3]; // angular velocity in body frame
 static float gyro_quat[4];
 static float a_x[9], Rq[9], wrot[9];
 
@@ -202,8 +202,8 @@ static inline void quat_to_rot_mat(float dst[9], float quat[4]) {
 }
 
 // Linear combination of 2 vectors.
-static inline void linv3(float dst[3], const float v0[3], const float v1[3],
-                         float a, float b) {
+static inline void linv3(float *dst, const float *v0, const float *v1, float a,
+                         float b) {
   dst[0] = a * v0[0] + b * v1[0];
   dst[1] = a * v0[1] + b * v1[1];
   dst[2] = a * v0[2] + b * v1[2];
@@ -262,9 +262,10 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   gyro_body[2] = gyro_m->gyro_z;
 
   linv3(acc_body, acc_body, eskf->state.acc_b, 9.81f, -1);
-  linv3(gyro_body, gyro_body, eskf->state.gyro_b, dt, -dt); // substract bias
-  quat_rotate_vec(acc_glob, eskf->state.quat, acc_body);    // to global frame
-  rot_to_quat(gyro_quat, gyro_body);
+  linv3(gyro_body_int, gyro_body, eskf->state.gyro_b, dt,
+        -dt); // substract bias
+  quat_rotate_vec(acc_glob, eskf->state.quat, acc_body);
+  rot_to_quat(gyro_quat, gyro_body_int);
   quat_mul(eskf->state.quat, eskf->state.quat, gyro_quat);
   quat_norm(eskf->state.quat);
 
@@ -310,6 +311,21 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   // dx = Fx * dx
 }
 
+static inline void euler_to_quat(float q[4], float roll, float pitch,
+                                 float yaw) {
+  float cr = arm_cos_f32(roll * 0.5f);
+  float sr = arm_sin_f32(roll * 0.5f);
+  float cp = arm_cos_f32(pitch * 0.5f);
+  float sp = arm_sin_f32(pitch * 0.5f);
+  float cy = arm_cos_f32(yaw * 0.5f);
+  float sy = arm_sin_f32(yaw * 0.5f);
+
+  q[0] = cr * cp * cy + sr * sp * sy; // w
+  q[1] = sr * cp * cy - cr * sp * sy; // x
+  q[2] = cr * sp * cy + sr * cp * sy; // y
+  q[3] = cr * cp * sy - sr * sp * cy; // z
+}
+
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
                float sigma_ww, gyro3d_t *gyro_init, float yaw_init,
                accel3d_t *accel_init) {
@@ -325,9 +341,12 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   float pitch_init = atan2f(-accel_init->accel_x,
                             sqrtf(accel_init->accel_y * accel_init->accel_y +
                                   accel_init->accel_z * accel_init->accel_z));
-  float rot_v[3] = {roll_init, pitch_init, yaw_init};
-  rot_to_quat(eskf->dx.quat, rot_v);
-  quat_mul(eskf->state.quat, eskf->state.quat, eskf->dx.quat);
+  euler_to_quat(eskf->dx.quat, roll_init, pitch_init, 0);
+  quat_norm(eskf->dx.quat);
+
+  quat_mul(eskf->state.quat, eskf->state.quat,
+           eskf->dx.quat); // apply pitch and roll from accel
+  quat_norm(eskf->state.quat);
 
   memset(eskf->P, 0, sizeof(eskf->P));
   memset(F_data, 0, sizeof(F_data));
@@ -359,15 +378,63 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   arm_mat_init_f32(&Pv, 3, 3, P_data);
 }
 
+void quat_get_euler(const float q[4], float *roll, float *pitch, float *yaw) {
+
+  float w = q[0];
+  float x = q[1];
+  float y = q[2];
+  float z = q[3];
+
+  // --- Roll (x-axis rotation) ---
+  float sinr_cosp = 2.0f * (w * x + y * z);
+  float cosr_cosp = 1.0f - 2.0f * (x * x + y * y);
+  *roll = atan2f(sinr_cosp, cosr_cosp);
+
+  // --- Pitch (y-axis rotation) ---
+  float sinp = 2.0f * (w * y - z * x);
+  if (fabsf(sinp) >= 1.0f)
+    *pitch = copysignf(M_PI / 2.0f, sinp); // clamp for numerical safety
+  else
+    *pitch = asinf(sinp);
+
+  // --- Yaw (z-axis rotation) ---
+  float siny_cosp = 2.0f * (w * z + x * y);
+  float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
+  *yaw = atan2f(siny_cosp, cosy_cosp);
+}
+
+void quat_get_yaw(const float q[4], float *yaw) {
+
+  float w = q[0];
+  float x = q[1];
+  float y = q[2];
+  float z = q[3];
+
+  // --- Yaw (z-axis rotation) ---
+  float siny_cosp = 2.0f * (w * z + x * y);
+  float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
+  *yaw = atan2f(siny_cosp, cosy_cosp);
+}
+
 // Note: more general and efficient update for small angle error:
 // `dx.quat = state.quat*-1 * yaw_quat`
-void eskf_update_yaw(eskf_t *eskf, float yaw_m, float cov) {
-  // assume yaw is given in global frame
-  // rotate back to body
-  float yaw_v[3] = {0, 0, yaw_m};
-  float quat_conj[4];
+void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
+  // assume yaw is given in local (???) frame
+  // rotate back to global
+  float mag_v[3] = {mag->MagX, mag->MagY, mag->MagZ};
+  float quat_rot[4], quat_conj[4];
   quat_inv(quat_conj, eskf->state.quat);
-  quat_rotate_vec(yaw_v, quat_conj, yaw_v);
+  // quat_rotate_vec(mag_v, quat_conj, mag_v);
+  float yaw = atan2f(mag_v[1], mag_v[0]) + 0.11;
+  float state_yaw;
+  quat_get_yaw(eskf->state.quat, &state_yaw);
+
+  mag_v[0] = 0;
+  mag_v[1] = 0;
+  mag_v[2] = state_yaw - yaw;
+  mag_v[2] = mag_v[2] < M_PI ? mag_v[2] : mag_v[2] - 2.0f * M_PI;
+  mag_v[2] = mag_v[2] > -M_PI ? mag_v[2] : mag_v[2] + 2.0f * M_PI;
+  rot_to_quat(quat_rot, mag_v); // small angle difference
   // quat_to_vec(quat_v, eskf->state.quat);
 
   // compute kalman gain
@@ -384,8 +451,8 @@ void eskf_update_yaw(eskf_t *eskf, float yaw_m, float cov) {
   arm_mat_mult_f32(&K, &H, &K);
 
   // compute error state change
-  arm_mat_vec_mult_f32(&K, yaw_v, yaw_v);
-  rot_to_quat(eskf->dx.quat, yaw_v);
+  // arm_mat_vec_mult_f32(&K, yaw_v, yaw_v);
+  rot_to_quat(eskf->dx.quat, mag_v); // TODO
 
   // covariance update
   // symmetric form K(HPH.T+V)K.T

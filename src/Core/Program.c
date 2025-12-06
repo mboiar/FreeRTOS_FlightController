@@ -132,6 +132,9 @@ void Init() {
     Error_Handler();
   }
 
+  HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
+  TIM3->CCR1 = TIM3->CNT + 1000;
+
   uint8_t buf[30] = "All tasks created";
   HAL_UART_Transmit(&huart1, buf, sizeof(buf), HAL_MAX_DELAY);
 }

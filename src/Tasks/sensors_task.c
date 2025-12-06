@@ -13,7 +13,7 @@ typedef enum { INIT, CALIBRATING, READY } SENSORS_STATE;
 
 static void sensors_calibrate();
 static uint8_t sensors_calibrate_stationary();
-static void sensors_init();
+static HAL_StatusTypeDef sensors_init();
 
 sensor_data_t imu_data, tmp_data;
 SENSORS_STATE sstate;
@@ -47,7 +47,7 @@ mag3d_t mag;
 
 float magcal_offset[3];
 float magcal_mat[3][3];
-float mag_decl;
+float mag_decl = 0.109665f;
 float mag_incl;
 gyro3d_t offG;
 accel3d_t offA;
@@ -81,7 +81,12 @@ static bool dist_filter_init[HCSR04_SENSOR_COUNT] = {0};
  */
 void TaskSensor(void *argument) {
   sstate = INIT;
-  sensors_init();
+  if (sensors_init() != HAL_OK) {
+    mavlink_msg_statustext_pack(1, 1, &msg, MAV_SEVERITY_CRITICAL,
+                                "Sensor init error", 0, 0);
+    comm_tx_send(&msg);
+    vTaskSuspend(TaskSensorHandle);
+  }
 
   sstate = CALIBRATING;
 
@@ -155,8 +160,18 @@ void TaskSensor(void *argument) {
                 mag.MagZ, bmp_pressure, bmp_pressure - p_ref, tmp_data.alt,
                 tmp_data.bmp_temp, 0xFFFF, 0);
             comm_tx_send(&msg);
+            msglen = mavlink_msg_attitude_quaternion_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
+                0, 0, Qcov);
+            comm_tx_send(&msg);
+            msglen = mavlink_msg_local_position_ned_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
+                eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
+                eskf.state.vel[2], 0, 0, 0, PVcov);
+            comm_tx_send(&msg);
 
-            eskf_update_yaw(&eskf, tmp_data.heading, sigma_mag);
+            eskf_update_yaw(&eskf, &mag, sigma_mag);
             eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
             eskf_get_cov_posvel(&eskf, PVcov);
             eskf_get_cov_quat(&eskf, Qcov);
@@ -166,8 +181,8 @@ void TaskSensor(void *argument) {
                 HCSR04_BUFFER_LEN - 1) { // filter and report on buffer full
               for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
                 dist_sensors[i].last_distance_cm = filter_dist(
-                    dist_buf[i], dist_sensors[i].last_distance_cm, 0.5,
-                    &dist_filter_init[i], 0.3, HCSR04_BUFFER_LEN);
+                    dist_buf[i], dist_sensors[i].last_distance_cm, 0.8,
+                    &dist_filter_init[i], 2, HCSR04_BUFFER_LEN);
                 mavlink_msg_distance_sensor_pack(
                     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
                     HCSR04_MIN_VALID_US, HCSR04_MAX_ECHO_US,
@@ -195,19 +210,9 @@ void TaskSensor(void *argument) {
             last_dist_tick = xTaskGetTickCount();
           }
 
-          xTaskNotifyWait(pdFALSE, 0, &notif, 0);
+          // xTaskNotifyWait(pdFALSE, 0, &notif, 0);
           // if (notif & SENSOR_DEBUG_EKF) {
           // notif &= ~SENSOR_DEBUG_EKF;
-          msglen = mavlink_msg_attitude_quaternion_cov_pack(
-              1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0, 0,
-              0, Qcov);
-          comm_tx_send(&msg);
-          msglen = mavlink_msg_local_position_ned_cov_pack(
-              1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-              MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
-              eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
-              eskf.state.vel[2], 0, 0, 0, PVcov);
-          comm_tx_send(&msg);
 
           // }
 
@@ -260,21 +265,25 @@ static void sensors_calibrate() {
   // TODO: signal end of calibration
 }
 
-static void sensors_init() {
+static HAL_StatusTypeDef sensors_init() {
+  // vTaskDelay(pdMS_TO_TICKS(1000));
   I2C_Scan(&hi2c1);
 
   HAL_StatusTypeDef mpu_status = mpu6050_heartbeat();
   if (mpu_status != HAL_OK) {
     LOG_CRIT(TASK_SENSOR_ID, "Accel: no response");
     // TODO: handle error
+    return HAL_ERROR;
   }
   mpu6050_user_ctrl(0);
   if ((mpu6050_set_power_options(CLKSEL_PLLX, 0) != HAL_OK) ||
-      (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN,
-                          SMPRT_DIV) != HAL_OK) ||
-      mpu6050_set_gyro_accel_config(FS_SEL_250, 0)) {
+      (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN, 0, 2) !=
+       HAL_OK) ||
+      mpu6050_set_gyro_accel_config(FS_SEL_250, AFS_2G)) {
     LOG_CRIT(TASK_SENSOR_ID, "Accel: couldn't configure");
     // TODO: handle error
+    return HAL_ERROR;
+
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Accel: Ready\r\n");
   }
@@ -285,12 +294,12 @@ static void sensors_init() {
   offG.gyro_x = 0;
   offG.gyro_y = 0;
   offG.gyro_z = 0;
-  offA.accel_x = 0;
-  offA.accel_y = 0;
-  offA.accel_z = 0;
-  for (int i = 0; i < 3; i++) {
-    scaleA[i] = 1;
-  }
+  offA.accel_x = 0.048761f;
+  offA.accel_y = 0.003296f;
+  offA.accel_z = -0.06665f;
+  scaleA[0] = 1.003368f; // 0.99664f;
+  scaleA[1] = 1.012108f; // 0.98804f;
+  scaleA[2] = 0.992729f; // 1.00732f;
 
   // initialize mag offsets
   for (size_t i = 0; i < 3; i++) {
@@ -303,11 +312,14 @@ static void sensors_init() {
     }
   }
 
-  HAL_StatusTypeDef bmp_status =
+  HAL_StatusTypeDef bmp_status;
+  bmp_status =
       bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT);
   if (bmp_status != HAL_OK) {
     LOG_CRIT(TASK_SENSOR_ID, "Baro: no response");
     // TODO: handle error
+    return HAL_ERROR;
+
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Baro: Ready\r\n");
   }
@@ -317,12 +329,15 @@ static void sensors_init() {
   if (qmc_status != HAL_OK) {
     LOG_CRIT(TASK_SENSOR_ID, "Mag: no response");
     // TODO: handle error
+    return HAL_ERROR;
   }
   if ((qmc5883_set_config(QMC5883_CONTINUOUS | ODR_100HZ | RNG_2G | OSR_512) !=
        HAL_OK) ||
       (qmc5883_set_ctrl(INT_DISABLE | ROL_PNT_NORMAL) != HAL_OK)) {
     LOG_CRIT(TASK_SENSOR_ID, "Mag: couldn't configure");
     // TODO: handle error
+    return HAL_ERROR;
+
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Mag: Ready\r\n");
   }
@@ -332,6 +347,8 @@ static void sensors_init() {
   }
   hcsr04_trigger();
   last_dist_tick = xTaskGetTickCount();
+
+  return HAL_OK;
 }
 
 static uint8_t sensors_calibrate_stationary() {
@@ -392,15 +409,15 @@ void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
       uint32_t dur = __HAL_TIM_GET_COUNTER(&htim5) - dist_sensors[i].t_start_us;
       dist_sensors[i].duration_us = dur;
 
-      if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
-        dist_buf[i][dist_meas_cnt % 5] =
-            duration_to_dist((float)dur * 100.0f, 22.2);
-      } else {
-        dist_buf[i][dist_meas_cnt % 5] = -1.0f; /* invalid */
-      }
+      // if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
+      dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] =
+          duration_to_dist((float)dur * 100.0f, 22.2);
+      // } else {
+      // dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f; /* invalid */
+      // }
     } else {
       dist_sensors[i].duration_us = 0;
-      dist_buf[i][dist_meas_cnt % 5] = -1.0f;
+      dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f;
     }
     dist_sensors[i].state = 0; /* IDLE after measurement */
   }

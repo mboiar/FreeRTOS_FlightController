@@ -36,12 +36,7 @@ typedef enum {
   CLKSEL_RESET = 7
 } MPU6050_CLKSEL_OPTION;
 
-typedef enum {
-  ACCEL_FS_2G,
-  ACCEL_FS_4G,
-  ACCEL_FS_8G,
-  ACCEL_FS_16G
-} ACCEL_FS_OPTION;
+typedef enum { AFS_2G, AFS_4G, AFS_8G, AFS_16G } ACCEL_FS_OPTION;
 
 typedef enum { FS_SEL_250, FS_SEL_500, FS_SEL_1000, FS_SEL_2000 } FS_SEL_OPTION;
 
@@ -93,7 +88,8 @@ float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale);
 
 float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale);
 
-HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1, uint8_t cfg2);
+HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1, uint8_t cfg2,
+                                     uint8_t cfg3);
 
 HAL_StatusTypeDef mpu6050_set_master_ctrl(uint8_t ctrl);
 

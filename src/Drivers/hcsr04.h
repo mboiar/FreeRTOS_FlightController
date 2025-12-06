@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define HCSR04_MAX_ECHO_US 40000U /* 40 ms -> max measurable (~6.8 m) */
+#define HCSR04_MAX_ECHO_US 80000U /* 80 ms -> max measurable  */
 #define HCSR04_RISING_TIMEOUT_US                                               \
   5000U                         /* if no rising in 5ms after trig -> no echo */
 #define HCSR04_MIN_VALID_US 10U /* ignore extremely short pulses */
