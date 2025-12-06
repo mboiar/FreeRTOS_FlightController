@@ -64,10 +64,10 @@ void StartupTask(void *argument) {
       int dur = 4;    // durations[NoteIndex];
       // cur_tone = canon_melody[NoteIndex];
       if (freq > 0) {
-        TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
-        TIM1->CCR1 = (TIM1->ARR >> 1);      // Set Duty Cycle 50%
-      } else {
-        TIM1->CCR1 = 0;
+        //   TIM1->ARR = (1000000UL / freq) - 1; // Set The PWM Frequency
+        //   TIM1->CCR1 = (TIM1->ARR >> 1);      // Set Duty Cycle 50%
+        // } else {
+        //   TIM1->CCR1 = 0;
       }
       NoteIndex++;
       vTaskDelay(pdMS_TO_TICKS(1000 / dur));

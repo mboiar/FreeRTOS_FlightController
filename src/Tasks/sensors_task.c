@@ -47,7 +47,7 @@ mag3d_t mag;
 
 float magcal_offset[3];
 float magcal_mat[3][3];
-float mag_decl = 0.109665f;
+float mag_decl = MAG_DECL;
 float mag_incl;
 gyro3d_t offG;
 accel3d_t offA;
@@ -117,7 +117,7 @@ void TaskSensor(void *argument) {
               tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
 
               eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
-                        &gyro_offset, tmp_data.heading, &tmp_data.accel);
+                        &gyro_offset, &mag, &tmp_data.accel);
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
               sstate = READY;
             }
@@ -337,7 +337,6 @@ static HAL_StatusTypeDef sensors_init() {
     LOG_CRIT(TASK_SENSOR_ID, "Mag: couldn't configure");
     // TODO: handle error
     return HAL_ERROR;
-
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Mag: Ready\r\n");
   }

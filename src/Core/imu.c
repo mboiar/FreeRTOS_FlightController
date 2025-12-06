@@ -17,6 +17,9 @@
 // float acc_psd = 400;      // ug/sqrt(Hz)
 // float gyro_rnsd = 0.005;  // deg/s/sqrt(Hz)
 
+static inline void euler_to_quat(float q[4], float roll, float pitch,
+                                 float yaw);
+
 static arm_matrix_instance_f32 F, P, Ft, Q, Ra, R, W, HPH, K, H, Ht, Pv;
 static float Ft_data[15 * 15], F_data[15 * 15], Q_data[15 * 15], K_data[4 * 4],
     HPH_data[3 * 3], H_data[3 * 3], Ht_data[3 * 3], P_data[3 * 3];
@@ -147,9 +150,9 @@ static inline void rot_to_quat(float dst[4], const float rot[3]) {
 
   // small-angle approximation -> justified? no
   dst[0] = arm_cos_f32(theta / 2);
-  dst[1] = sinth * rot[0];
-  dst[2] = sinth * rot[1];
-  dst[3] = sinth * rot[2];
+  dst[1] = sinth * rot[0] / theta;
+  dst[2] = sinth * rot[1] / theta;
+  dst[3] = sinth * rot[2] / theta;
 }
 
 static inline void quat_reset(float quat[4]) {
@@ -327,7 +330,7 @@ static inline void euler_to_quat(float q[4], float roll, float pitch,
 }
 
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
-               float sigma_ww, gyro3d_t *gyro_init, float yaw_init,
+               float sigma_ww, gyro3d_t *gyro_init, mag3d_t *mag_init,
                accel3d_t *accel_init) {
   eskf_state_t st = {
       .pos = {0, 0, 0},
@@ -337,15 +340,42 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
       .gyro_b = {gyro_init->gyro_x, gyro_init->gyro_y, gyro_init->gyro_z},
       .g = {0, 0, -9.81}};
   eskf->state = st;
-  float roll_init = atan2f(accel_init->accel_y, accel_init->accel_z);
-  float pitch_init = atan2f(-accel_init->accel_x,
-                            sqrtf(accel_init->accel_y * accel_init->accel_y +
-                                  accel_init->accel_z * accel_init->accel_z));
-  euler_to_quat(eskf->dx.quat, roll_init, pitch_init, 0);
-  quat_norm(eskf->dx.quat);
+  float roll_init, pitch_init, yaw_init;
+  float quat_init[4];
+  // float rot_init[3];
+  float mag_v[3] = {mag_init->MagX, mag_init->MagY, mag_init->MagZ};
+  roll_init = atan2f(accel_init->accel_y, accel_init->accel_z);
+  pitch_init = atan2f(-accel_init->accel_x,
+                      sqrtf(accel_init->accel_y * accel_init->accel_y +
+                            accel_init->accel_z * accel_init->accel_z));
+  // rot_init[0] = roll_init;
+  // rot_init[1] = 0;
+  // rot_init[2] = 0;
+  // rot_to_quat(quat_init, rot_init);
+  euler_to_quat(quat_init, roll_init, pitch_init, 0);
+  quat_norm(quat_init);
+  // quat_mul(eskf->state.quat, eskf->state.quat, quat_init);
+  // quat_norm(eskf->state.quat);
 
-  quat_mul(eskf->state.quat, eskf->state.quat,
-           eskf->dx.quat); // apply pitch and roll from accel
+  // rot_init[0] = 0;
+  // rot_init[1] = pitch_init;
+  // rot_init[2] = 0;
+  // rot_to_quat(quat_init, rot_init);
+  // euler_to_quat(eskf->dx.quat, roll_init, pitch_init, 0);
+  // quat_norm(quat_init);
+  // quat_mul(eskf->state.quat, eskf->state.quat, quat_init);
+  // quat_norm(eskf->state.quat);
+
+  // apply yaw from mag
+  quat_rotate_vec(mag_v, quat_init, mag_v);
+  yaw_init = atan2f(mag_v[1], mag_v[0]) + MAG_DECL;
+  // rot_init[0] = 0;
+  // rot_init[1] = 0;
+  // rot_init[2] = yaw_init;
+  // rot_to_quat(quat_init, rot_init);
+  euler_to_quat(quat_init, roll_init, pitch_init, yaw_init);
+  quat_norm(quat_init);
+  quat_mul(eskf->state.quat, eskf->state.quat, quat_init);
   quat_norm(eskf->state.quat);
 
   memset(eskf->P, 0, sizeof(eskf->P));
@@ -419,15 +449,15 @@ void quat_get_yaw(const float q[4], float *yaw) {
 // Note: more general and efficient update for small angle error:
 // `dx.quat = state.quat*-1 * yaw_quat`
 void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
-  // assume yaw is given in local (???) frame
-  // rotate back to global
+
   float mag_v[3] = {mag->MagX, mag->MagY, mag->MagZ};
-  float quat_rot[4], quat_conj[4];
-  quat_inv(quat_conj, eskf->state.quat);
-  // quat_rotate_vec(mag_v, quat_conj, mag_v);
-  float yaw = atan2f(mag_v[1], mag_v[0]) + 0.11;
-  float state_yaw;
-  quat_get_yaw(eskf->state.quat, &state_yaw);
+  float quat_rot[4];
+  arm_status status;
+  float state_yaw, state_roll, state_pitch;
+  quat_get_euler(eskf->state.quat, &state_roll, &state_pitch, &state_yaw);
+  euler_to_quat(quat_rot, state_roll, state_pitch, 0);
+  quat_rotate_vec(mag_v, quat_rot, mag_v);
+  float yaw = atan2f(mag_v[1], mag_v[0]) + MAG_DECL;
 
   mag_v[0] = 0;
   mag_v[1] = 0;
@@ -443,12 +473,12 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
 
   // K = P*Ht*(H*P*Ht)^-1
   eskf_get_cov_quat(eskf, P_data);
-  arm_mat_mult_f32(&H, &P, &HPH);
-  arm_mat_trans_f32(&H, &Ht);
-  arm_mat_mult_f32(&HPH, &Ht, &HPH);
-  arm_mat_inverse_f32(&HPH, &H);
-  arm_mat_mult_f32(&Ht, &H, &H);
-  arm_mat_mult_f32(&K, &H, &K);
+  status = arm_mat_mult_f32(&H, &P, &HPH);
+  status = arm_mat_trans_f32(&H, &Ht);
+  status = arm_mat_mult_f32(&HPH, &Ht, &HPH);
+  status = arm_mat_inverse_f32(&HPH, &H);
+  status = arm_mat_mult_f32(&Ht, &H, &H);
+  status = arm_mat_mult_f32(&K, &H, &K);
 
   // compute error state change
   // arm_mat_vec_mult_f32(&K, yaw_v, yaw_v);

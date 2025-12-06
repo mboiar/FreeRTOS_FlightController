@@ -85,6 +85,9 @@ void Error_Handler(void);
 #define ECHO1_PIN_Pin GPIO_PIN_15
 #define ECHO1_PIN_GPIO_Port GPIOB
 #define ECHO1_PIN_EXTI_IRQn EXTI15_10_IRQn
+#define ECHO5_PIN_Pin GPIO_PIN_12
+#define ECHO5_PIN_GPIO_Port GPIOA
+#define ECHO5_PIN_EXTI_IRQn EXTI15_10_IRQn
 #define UART_RPI_TX_Pin GPIO_PIN_15
 #define UART_RPI_TX_GPIO_Port GPIOA
 #define UART_RPI_RX_Pin GPIO_PIN_3

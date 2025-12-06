@@ -9,6 +9,8 @@
 #include "mpu6050.h"
 #include "qmc5883.h"
 
+#define MAG_DECL 0.109665f
+
 typedef struct {
   accel3d_t accel;
   gyro3d_t gyro;
@@ -43,7 +45,7 @@ typedef struct {
  * @retval None
  */
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
-               float sigma_ww, gyro3d_t *gyro_bm, float yaw_init,
+               float sigma_ww, gyro3d_t *gyro_bm, mag3d_t *mag_init,
                accel3d_t *accel_init);
 
 /**

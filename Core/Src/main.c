@@ -107,7 +107,6 @@ int main(void)
   MX_RTC_Init();
   MX_TIM5_Init();
   MX_TIM4_Init();
-  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
