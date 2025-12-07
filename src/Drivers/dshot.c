@@ -27,9 +27,9 @@ typedef enum {
 TIM_HandleTypeDef *htim_esc = &htim1;
 
 static uint16_t dshot_pwm_buf0[DSHOT_DMA_BUF_SIZE];
-static uint16_t dshot_pwm_buf1[DSHOT_DMA_BUF_SIZE];
-static uint16_t dshot_pwm_buf2[DSHOT_DMA_BUF_SIZE];
-static uint16_t dshot_pwm_buf3[DSHOT_DMA_BUF_SIZE];
+// static uint16_t dshot_pwm_buf1[DSHOT_DMA_BUF_SIZE];
+// static uint16_t dshot_pwm_buf2[DSHOT_DMA_BUF_SIZE];
+// static uint16_t dshot_pwm_buf3[DSHOT_DMA_BUF_SIZE];
 
 static uint32_t ticks_per_bit = 0;
 

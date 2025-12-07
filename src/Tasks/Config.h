@@ -46,3 +46,10 @@
 #define HCSR04_TRIG_PORT GPIOB
 #define HCSR04_TRIG_PIN GPIO_PIN_12
 #define HCSR04_BUFFER_LEN 3
+
+#define ESKF_SWW 5e-5f  // rad/s/sqrtHz
+#define ESKF_SWN 0.002f // rad/s
+#define ESKF_SAN 0.01f  // m/s^2
+#define ESKF_SAW 5e-4f  // m/s^2/sqrtHz
+#define EKSF_SMAG 0.02  // ?
+#define EKSF_SBARO 0.2  // m

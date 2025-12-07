@@ -6,10 +6,12 @@
 #pragma once
 
 #include "bmp280.h"
+#include "gps.h"
 #include "mpu6050.h"
 #include "qmc5883.h"
 
 #define MAG_DECL 0.109665f
+#define MAG_INCL 1.162681f
 
 typedef struct {
   accel3d_t accel;
@@ -30,9 +32,17 @@ typedef struct {
 } eskf_state_t;
 
 typedef struct {
-  eskf_state_t state; // Nominal state
-  eskf_state_t dx;    // Error state
-  float P[15 * 15];   // Covariance
+  float pos[3];    // position (NED)
+  float vel[3];    // velocity (NED)
+  float theta[3];  // orientation (Euler angles)
+  float acc_b[3];  // accelerometer bias
+  float gyro_b[3]; // gyro bias
+} eskf_err_state_t;
+
+typedef struct {
+  eskf_state_t state;  // Nominal state
+  eskf_err_state_t dx; // Error state
+  float P[15 * 15];    // Covariance
   float sigma_an;
   float sigma_wn;
   float sigma_aw;
@@ -68,9 +78,13 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov);
  * @param baro_m barometer measurement in [m]
  * @retval None
  */
-void eskf_update_alt(eskf_t *eskf, float alt, float ov);
+void eskf_update_baro(eskf_t *eskf, float alt, float cov);
 
-void eskf_get_cov_quat(eskf_t *eskf, float dst[9]);
+void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov);
+
+void eskf_update_gps(eskf_t *eskf, GPS_data data, float hdop, float vdop);
+
+void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]);
 
 void eskf_get_cov_posvel(eskf_t *eskf, float dst[15]);
 

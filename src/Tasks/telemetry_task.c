@@ -29,6 +29,6 @@ void TaskTelemetry(void *argument) {
       HAL_UART_Transmit(&huart1, (uint8_t *)buf, sizeof(buf), portMAX_DELAY);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

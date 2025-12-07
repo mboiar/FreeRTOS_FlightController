@@ -56,7 +56,8 @@ float scaleA[3];
 static uint32_t notif;
 float p_ref; // reference pressure
 float bmp_temp, bmp_pressure;
-gyro3d_t gyro_offset;
+gyro3d_t gyro_offset = {0, 0, 0};
+accel3d_t accel_offset = {0, 0, 0};
 
 static eskf_t eskf;
 
@@ -64,8 +65,8 @@ bool distance_sensor_ready_all = false;
 
 TickType_t tick_end, tick_start, last_dist_tick;
 
-float sigma_ww = 0, sigma_wn = 0, sigma_an = 0, sigma_aw = 0, sigma_mag = 0,
-      sigma_baro = 0;
+float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
+      sigma_aw = ESKF_SAW, sigma_mag = EKSF_SMAG, sigma_baro = EKSF_SBARO;
 
 static float PVcov[15], Qcov[9];
 
@@ -117,7 +118,7 @@ void TaskSensor(void *argument) {
               tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
 
               eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
-                        &gyro_offset, &mag, &tmp_data.accel);
+                        &gyro_offset, &mag, &accel_offset);
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
               sstate = READY;
             }
@@ -174,7 +175,7 @@ void TaskSensor(void *argument) {
             eskf_update_yaw(&eskf, &mag, sigma_mag);
             eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
             eskf_get_cov_posvel(&eskf, PVcov);
-            eskf_get_cov_quat(&eskf, Qcov);
+            eskf_get_cov_orientation(&eskf, Qcov);
           }
           if (tick % 20 == 0) { // 10 Hz
             if (dist_meas_cnt % HCSR04_BUFFER_LEN ==
@@ -184,8 +185,7 @@ void TaskSensor(void *argument) {
                     dist_buf[i], dist_sensors[i].last_distance_cm, 0.8,
                     &dist_filter_init[i], 2, HCSR04_BUFFER_LEN);
                 mavlink_msg_distance_sensor_pack(
-                    1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                    HCSR04_MIN_VALID_US, HCSR04_MAX_ECHO_US,
+                    1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, 10, 300,
                     dist_sensors[i].last_distance_cm,
                     MAV_DISTANCE_SENSOR_ULTRASOUND, i,
                     dist_sensors[i].orientation, UINT8_MAX, 0.52f, 0.52f, 0, 0);
@@ -312,6 +312,20 @@ static HAL_StatusTypeDef sensors_init() {
     }
   }
 
+  magcal_offset[0] = -0.219773f;
+  magcal_offset[1] = -0.048452f;
+  magcal_offset[2] = -0.356323f;
+
+  magcal_mat[0][0] = -0.671190f;
+  magcal_mat[0][1] = 0.007412f;
+  magcal_mat[0][2] = -0.026167f;
+  magcal_mat[1][0] = -0.087054f;
+  magcal_mat[1][1] = 0.1715029f;
+  magcal_mat[1][2] = -2.1844196f;
+  magcal_mat[2][0] = 0.02851924f;
+  magcal_mat[2][1] = 3.5780598f;
+  magcal_mat[2][2] = 0.28205676f;
+
   HAL_StatusTypeDef bmp_status;
   bmp_status =
       bmp_init(&tp, &pp, BMP280_CTRL_MEAS_DEFAULT, BMP280_CONFIG_DEFAULT);
@@ -367,12 +381,18 @@ static uint8_t sensors_calibrate_stationary() {
                        tmp_data.gyro.gyro_y / calib_tick;
   gyro_offset.gyro_z = gyro_offset.gyro_z * (calib_tick - 1) / calib_tick +
                        tmp_data.gyro.gyro_z / calib_tick;
+  accel_offset.accel_x = accel_offset.accel_x * (calib_tick - 1) / calib_tick +
+                         tmp_data.accel.accel_x / calib_tick;
+  accel_offset.accel_y = accel_offset.accel_y * (calib_tick - 1) / calib_tick +
+                         tmp_data.accel.accel_y / calib_tick;
+  accel_offset.accel_z = accel_offset.accel_z * (calib_tick - 1) / calib_tick +
+                         tmp_data.accel.accel_z / calib_tick;
   return 0;
 }
 
 void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  size_t i;
+  int i;
   switch (GPIO_Pin) {
   case GPIO_PIN_1:
     i = 0;
@@ -393,32 +413,36 @@ void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
     i = 5;
     break;
   default:
-    i = 0;
+    i = -1;
     break;
   }
-  GPIO_PinState level =
-      HAL_GPIO_ReadPin(HCSR04_ECHO_PORT[i], HCSR04_ECHO_PIN[i]);
-  if (level == GPIO_PIN_SET) {
-    /* Rising edge */
-    dist_sensors[i].t_start_us = __HAL_TIM_GET_COUNTER(&htim5); // 10 kHz
-    dist_sensors[i].state = 2; /* WAIT_FALLING */
-  } else {
-    /* Falling edge */
-    if (dist_sensors[i].state == 2 && dist_sensors[i].t_start_us != 0) {
-      uint32_t dur = __HAL_TIM_GET_COUNTER(&htim5) - dist_sensors[i].t_start_us;
-      dist_sensors[i].duration_us = dur;
-
-      // if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
-      dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] =
-          duration_to_dist((float)dur * 100.0f, 22.2);
-      // } else {
-      // dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f; /* invalid */
-      // }
+  if (i > -1) {
+    GPIO_PinState level =
+        HAL_GPIO_ReadPin(HCSR04_ECHO_PORT[i], HCSR04_ECHO_PIN[i]);
+    if (level == GPIO_PIN_SET) {
+      /* Rising edge */
+      dist_sensors[i].t_start_us = __HAL_TIM_GET_COUNTER(&htim5); // 10 kHz
+      dist_sensors[i].state = 2; /* WAIT_FALLING */
     } else {
-      dist_sensors[i].duration_us = 0;
-      dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f;
+      /* Falling edge */
+      if (dist_sensors[i].state == 2 && dist_sensors[i].t_start_us != 0) {
+        uint32_t dur =
+            __HAL_TIM_GET_COUNTER(&htim5) - dist_sensors[i].t_start_us;
+        dist_sensors[i].duration_us = dur;
+
+        // if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
+        dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] =
+            duration_to_dist((float)dur * 100.0f, 22.2);
+        // } else {
+        // dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f; /* invalid */
+        // }
+      } else {
+        dist_sensors[i].duration_us = 0;
+        dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f;
+      }
+      dist_sensors[i].state = 0; /* IDLE after measurement */
     }
-    dist_sensors[i].state = 0; /* IDLE after measurement */
   }
+
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

@@ -31,9 +31,12 @@ HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag, float offv[3],
   HAL_StatusTypeDef status =
       qmc5883_read_reg_burst(QMC_5883_DATAX_LSB_REG, 6, rx_data); // TODO: IT
   if (status == HAL_OK) {
-    mag_val.MagZ = -(rx_data[1] << 8) | rx_data[0]; // local X data
-    mag_val.MagY = (rx_data[3] << 8) | rx_data[2];  // local Y data
-    mag_val.MagX = (rx_data[5] << 8) | rx_data[4];  // local Z data
+    // mag_val.MagZ = -(rx_data[1] << 8) | rx_data[0]; // local X data
+    // mag_val.MagY = (rx_data[3] << 8) | rx_data[2];  // local Y data
+    // mag_val.MagX = (rx_data[5] << 8) | rx_data[4];  // local Z data
+    mag_val.MagX = (rx_data[1] << 8) | rx_data[0]; // local X data
+    mag_val.MagY = (rx_data[3] << 8) | rx_data[2]; // local Y data
+    mag_val.MagZ = (rx_data[5] << 8) | rx_data[4]; // local Z data
 
     mag->MagX = qmc5883_data_convert(mag_val.MagX) - offv[0];
     mag->MagY = qmc5883_data_convert(mag_val.MagY) - offv[1];

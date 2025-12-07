@@ -24,6 +24,10 @@ typedef enum {
 
 static void handleMsgLong(const mavlink_message_t *msg) {
   mavlink_command_long_t cmd;
+  MAV_RESULT mavres;
+  mavlink_message_t msgResp;
+  mavres = MAV_RESULT_ACCEPTED;
+
   mavlink_msg_command_long_decode(msg, &cmd);
   switch (cmd.command) {
   case MAV_CMD_PREFLIGHT_CALIBRATION:
@@ -93,7 +97,7 @@ static void handleMsgLong(const mavlink_message_t *msg) {
     mavres = MAV_RESULT_UNSUPPORTED;
     break;
   }
-  mavlink_msg_command_ack_pack(1, MAV_COMP_ID_AUTOPILOT1, &msg, cmd.command,
+  mavlink_msg_command_ack_pack(1, MAV_COMP_ID_AUTOPILOT1, &msgResp, cmd.command,
                                mavres, 0, 0, cmd.target_system,
                                cmd.target_component);
   comm_tx_send(&msg);
@@ -113,7 +117,6 @@ void TaskCommRx(void *argument) {
 
   mavlink_message_t msg;
   mavlink_status_t status;
-  MAV_RESULT mavres;
   size_t n = 0;
 
   if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, comm_rx_buf, COMMRX_DMA_LEN) !=
@@ -122,7 +125,6 @@ void TaskCommRx(void *argument) {
   }
 
   for (;;) {
-    mavres = MAV_RESULT_ACCEPTED;
     // BaseType_t res = xStreamBufferIsEmpty(commRXStream);
     n = xStreamBufferReceive(commRXStream, &rx_buf, sizeof(rx_buf),
                              portMAX_DELAY);
