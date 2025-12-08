@@ -7,6 +7,7 @@
 #define SENSOR_CALIBRATION_STOP (0x01 << 2)
 #define SENSOR_LOAD_PARAMS (0x01 << 3)
 #define SENSOR_DEBUG_EKF (0x01 << 4)
+#define SENSOR_FUSE_GPS (0x01 << 5)
 
 #define RADIORX_REQUEST_RAW 0x01
 #define RADIORX_REQUEST_SCALED (0x01 << 1)
@@ -22,4 +23,10 @@ typedef struct {
   uint8_t type;
   uint8_t autopilot;
   uint8_t mode;
+  uint8_t state;
+  uint8_t system_id;
+  uint8_t comp_id;
+  uint64_t home_lon;
+  uint64_t home_lat;
+  float home_alt;
 } FC_State;

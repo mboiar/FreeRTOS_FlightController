@@ -46,7 +46,7 @@ void TaskFlightLoop(void *argument) {
   } else {
     // init_pwm();
     // arming
-    pwm_set_pulse_us(&htim1, TIM_CHANNEL_2, 1000); // idle
+    // pwm_set_pulse_us(&htim1, TIM_CHANNEL_2, 1000); // idle
   }
 
   uint32_t tick = 0;
@@ -75,8 +75,8 @@ void TaskFlightLoop(void *argument) {
         dshot_data = 69;
         int res = dshot_write(dshot_data, 0, TIM_CHANNEL_2);
       } else {
-        pwm_set_pulse_us(&htim1, TIM_CHANNEL_2,
-                         1000); // small throttle test
+        // pwm_set_pulse_us(&htim1, TIM_CHANNEL_2,
+        //                  1000); // small throttle test
       }
 
       // dshot_data = 1000 + (dshot_data - DSHOT_VAL_MIN) / DSHOT_RANGE * 1000;

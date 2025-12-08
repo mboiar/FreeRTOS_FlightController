@@ -25,6 +25,9 @@ typedef enum {
   TaskID_LEN
 } TaskID;
 
+extern FC_State fc_state;
+extern GPS_data gps_data;
+
 extern osThreadId_t TaskSensorHandle;
 extern osThreadId_t TaskTelemetryHandle;
 extern osThreadId_t TaskRadioRXHandle;

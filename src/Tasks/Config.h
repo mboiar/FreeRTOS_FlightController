@@ -52,4 +52,4 @@
 #define ESKF_SAN 0.01f  // m/s^2
 #define ESKF_SAW 5e-4f  // m/s^2/sqrtHz
 #define EKSF_SMAG 0.02  // ?
-#define EKSF_SBARO 0.2  // m
+#define EKSF_SBARO 0.1  // m

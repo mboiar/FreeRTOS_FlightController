@@ -70,6 +70,8 @@ osThreadId_t TaskCommRxHandle;
 
 SemaphoreHandle_t imu_mutex;
 
+FC_State fc_state;
+
 static uint8_t crsfStream_Storage[CRSF_BUFFER_SIZE + 1];
 static uint8_t commStream_Storage[COMM_BUFFER_SIZE + 1];
 
@@ -82,6 +84,13 @@ void Init() {
 
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start_IT(&htim5);
+
+  fc_state.autopilot = MAV_AUTOPILOT_GENERIC;
+  fc_state.mode = MAV_MODE_FLAG_TEST_ENABLED;
+  fc_state.type = MAV_TYPE_QUADROTOR;
+  fc_state.state = MAV_STATE_BOOT;
+  fc_state.system_id = 1;
+  fc_state.comp_id = MAV_COMP_ID_AUTOPILOT1;
 
   crsfStream = xStreamBufferCreateStatic(CRSF_BUFFER_SIZE, 1,
                                          crsfStream_Storage, &crsfStreamStruct);

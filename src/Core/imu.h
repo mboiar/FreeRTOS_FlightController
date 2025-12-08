@@ -82,7 +82,8 @@ void eskf_update_baro(eskf_t *eskf, float alt, float cov);
 
 void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov);
 
-void eskf_update_gps(eskf_t *eskf, GPS_data data, float hdop, float vdop);
+void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
+                     uint64_t home_lat, float home_alt);
 
 void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]);
 

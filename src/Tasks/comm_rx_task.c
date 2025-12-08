@@ -12,6 +12,8 @@ static size_t comm_rx_dma_pos = 0;
 
 static uint8_t rx_buf[128];
 
+GPS_data gps_data;
+
 typedef enum {
   MAV_SET_OFFSET_SENSOR_TYPE_GYRO,
   MAV_SET_OFFSET_SENSOR_TYPE_ACC,
@@ -106,6 +108,11 @@ static void handleMsgLong(const mavlink_message_t *msg) {
 static void handleGPSMsg(const mavlink_message_t *msg) {
   mavlink_gps_input_t gps_msg;
   mavlink_msg_gps_input_decode(msg, &gps_msg);
+  gps_data.lat = gps_msg.lat;
+  gps_data.lon = gps_msg.lon;
+  gps_data.alt = gps_msg.alt;
+  gps_data.time_usec = gps_msg.time_usec;
+  xTaskNotify(TaskSensorHandle, SENSOR_FUSE_GPS, eSetBits);
 }
 
 /**

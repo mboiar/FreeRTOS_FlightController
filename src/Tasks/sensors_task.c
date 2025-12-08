@@ -9,14 +9,11 @@
 #include "tim.h"
 #include "utils.h"
 
-typedef enum { INIT, CALIBRATING, READY } SENSORS_STATE;
-
 static void sensors_calibrate();
 static uint8_t sensors_calibrate_stationary();
 static HAL_StatusTypeDef sensors_init();
 
 sensor_data_t imu_data, tmp_data;
-SENSORS_STATE sstate;
 
 GPIO_TypeDef *HCSR04_ECHO_PORT[HCSR04_SENSOR_COUNT] = {GPIOB, GPIOB, GPIOB,
                                                        GPIOB, GPIOB, GPIOA};
@@ -81,15 +78,16 @@ static bool dist_filter_init[HCSR04_SENSOR_COUNT] = {0};
  * @retval None
  */
 void TaskSensor(void *argument) {
-  sstate = INIT;
   if (sensors_init() != HAL_OK) {
-    mavlink_msg_statustext_pack(1, 1, &msg, MAV_SEVERITY_CRITICAL,
-                                "Sensor init error", 0, 0);
+    mavlink_msg_statustext_pack(fc_state.system_id, fc_state.comp_id, &msg,
+                                MAV_SEVERITY_CRITICAL, "Sensor init error", 0,
+                                0);
     comm_tx_send(&msg);
-    vTaskSuspend(TaskSensorHandle);
+    vTaskSuspendAll();
   }
-
-  sstate = CALIBRATING;
+  if (fc_state.state == MAV_STATE_BOOT) {
+    fc_state.state = MAV_STATE_CALIBRATING;
+  }
 
   size_t tick = 0; // 200 Hz
 
@@ -103,7 +101,7 @@ void TaskSensor(void *argument) {
       } else if (notif & SENSOR_MEASURE) {
         notif &= ~SENSOR_MEASURE;
         tick++;
-        if (sstate == CALIBRATING) {
+        if (fc_state.state == MAV_STATE_CALIBRATING) {
           if (tick % 2 == 0) { // 100 Hz
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
@@ -119,12 +117,23 @@ void TaskSensor(void *argument) {
 
               eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
                         &gyro_offset, &mag, &accel_offset);
+
+              // need GPS in case of auto
+              if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
+                  (fc_state.mode & MAV_MODE_FLAG_AUTO_ENABLED)) {
+                if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) &&
+                    (notif & SENSOR_FUSE_GPS)) {
+                  fc_state.home_alt = gps_data.alt;
+                  fc_state.home_lon = gps_data.lon;
+                  fc_state.home_lat = gps_data.lat;
+                }
+              }
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
-              sstate = READY;
+              fc_state.state = MAV_STATE_ACTIVE;
             }
           }
 
-        } else if (sstate == READY) {
+        } else if (fc_state.state == MAV_STATE_ACTIVE) {
           tick_start = xTaskGetTickCount();
           if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
                                 &gyro_offset, &offA, scaleA) != HAL_OK) {
@@ -173,7 +182,11 @@ void TaskSensor(void *argument) {
             comm_tx_send(&msg);
 
             eskf_update_yaw(&eskf, &mag, sigma_mag);
-            eskf_update_alt(&eskf, tmp_data.alt, sigma_baro);
+            eskf_update_baro(&eskf, tmp_data.alt, sigma_baro);
+            if (notif & SENSOR_FUSE_GPS) {
+              eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
+                              fc_state.home_lat, fc_state.home_alt);
+            }
             eskf_get_cov_posvel(&eskf, PVcov);
             eskf_get_cov_orientation(&eskf, Qcov);
           }

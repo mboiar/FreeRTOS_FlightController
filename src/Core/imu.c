@@ -631,7 +631,73 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   memset(eskf->dx.theta, 0, 3 * sizeof(eskf->dx.theta[0]));
 }
 
-void eskf_update_gps(eskf_t *eskf, GPS_data data, float hdop, float vdop) {
+static inline void lla_to_ned(uint64_t lat, uint64_t lon, float alt,
+                              uint64_t lat0, uint64_t lon0, float alt0,
+                              float ned[3]) {
+  float a = 6378137.0f;
+  float f = 1.0 / 298.257223563;
+  float e2 = f * (2 - f);
+  ned[0] = (float)((lat - lat0) * a * (1 - e2) /
+                   pow(1 - e2 * sin(lat0) * sin(lat0), 1.5));
+  ned[1] = (float)((lon - lon0) * a / sqrt(1 - e2 * sin(lat0) * sin(lat0)));
+  ned[2] = alt0 - alt;
+}
+
+void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
+                     uint64_t home_lat, float home_alt) {
+
+  float pos_diff[3];
+  lla_to_ned(data->lat, data->lon, data->alt, home_lat, home_lon, home_alt,
+             pos_diff);
+
+  // compute kalman gain
+  memset(H_data, 0, sizeof(H_data));
+  H_data[0] = 1;
+  H_data[4] = 1;
+  H_data[8] = 1;
+
+  // observation
+  // K = P*Ht*(H*P*Ht)^-1
+  eskf_get_cov_pos(eskf, P_data);
+  arm_mat_mult_f32(&H, &P, &HPH);
+  arm_mat_trans_f32(&H, &Ht);
+  arm_mat_mult_f32(&HPH, &Ht, &HPH);
+  arm_mat_inverse_f32(&HPH, &H);
+  arm_mat_mult_f32(&Ht, &H, &H);
+  arm_mat_mult_f32(&K, &H, &K);
+
+  // compute error state change
+  arm_mat_vec_mult_f32(&K, pos_diff, eskf->dx.pos);
+
+  // measurement error covariance
+  arm_matrix_instance_f32 v;
+  arm_status status;
+  float v_data[3 * 3];
+  arm_mat_init_f32(&v, 3, 3, v_data);
+  v_data[8] = data->vdop;
+  v_data[4] = data->hdop;
+  v_data[0] = data->hdop;
+
+  // covariance update
+  // symmetric form K(HPH.T+V)K.T
+  // TODO: Joseph form
+  arm_mat_trans_f32(&K, &Ht);
+  status = arm_mat_add_f32(&HPH, &v, &HPH);
+  arm_mat_mult_f32(&K, &HPH, &K);
+  arm_mat_mult_f32(&K, &Ht, &K);
+
+  // P <- P - K(HPH.T+V)K.T
+  arm_mat_sub_f32(&Pv, &K, &Pv);
+  set3x3(eskf->P, 6, 6, P_data, 15);
+
+  // inject error-state
+  linv3(eskf->state.pos, eskf->state.pos, eskf->dx.pos, 1, 1);
+
+  // reset error-state mean
+  memset(&eskf->dx.pos, 0, sizeof(eskf->dx.pos));
+}
+
+void eskf_update_baro(eskf_t *eskf, float alt, float cov) {
 
   float alt_v[3] = {0, 0, alt - eskf->state.pos[2]};
 
@@ -678,7 +744,7 @@ void eskf_update_gps(eskf_t *eskf, GPS_data data, float hdop, float vdop) {
   memset(&eskf->dx.pos, 0, sizeof(eskf->dx.pos));
 }
 
-void eskf_update_baro(eskf_t *eskf, float alt, float cov) {
+void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov) {
 
   float alt_v[3] = {0, 0, alt - eskf->state.pos[2]};
 
