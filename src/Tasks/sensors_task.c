@@ -56,7 +56,7 @@ float bmp_temp, bmp_pressure;
 gyro3d_t gyro_offset = {0, 0, 0};
 accel3d_t accel_offset = {0, 0, 0};
 
-static eskf_t eskf;
+eskf_t eskf;
 
 bool distance_sensor_ready_all = false;
 
@@ -93,7 +93,6 @@ void TaskSensor(void *argument) {
 
   for (;;) {
     cur_tick = xTaskGetTickCount();
-    // BUG: clears all notifications?
     if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
       if (notif & SENSOR_CALIBRATION_START) {
         notif &= ~SENSOR_CALIBRATION_START;
@@ -121,12 +120,12 @@ void TaskSensor(void *argument) {
               // need GPS in case of auto
               if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
                   (fc_state.mode & MAV_MODE_FLAG_AUTO_ENABLED)) {
-                if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) &&
-                    (notif & SENSOR_FUSE_GPS)) {
+                do {
+                  xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY);
                   fc_state.home_alt = gps_data.alt;
                   fc_state.home_lon = gps_data.lon;
                   fc_state.home_lat = gps_data.lat;
-                }
+                } while (!(notif & SENSOR_FUSE_GPS));
               }
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
               fc_state.state = MAV_STATE_ACTIVE;
@@ -231,7 +230,7 @@ void TaskSensor(void *argument) {
 
           // if (imu_mutex != NULL) {
           //   xSemaphoreTake(imu_mutex, portMAX_DELAY);
-          //   imu_data = tmp_data;
+          imu_data = tmp_data;
           //   xSemaphoreGive(imu_mutex);
         }
       }

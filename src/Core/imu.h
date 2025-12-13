@@ -40,9 +40,8 @@ typedef struct {
 } eskf_err_state_t;
 
 typedef struct {
-  eskf_state_t state;  // Nominal state
-  eskf_err_state_t dx; // Error state
-  float P[15 * 15];    // Covariance
+  eskf_state_t state; // Nominal state
+  float dx[15];       // Error state
   float sigma_an;
   float sigma_wn;
   float sigma_aw;

@@ -14,6 +14,9 @@
 
 #define TELEM_GET_RUNTIME_STATS (0x01 << 1)
 
+#define PID_COMPUTE 0x01
+#define PID_SET_TARGET_VELOCITY (0x01 << 1)
+
 #define MAV_CMD_REQUEST_RC_RAW 12
 #define MAV_CMD_REQUEST_RC_SCALED 15
 #define MAV_CMD_REQUEST_EKF 13
@@ -22,7 +25,8 @@
 typedef struct {
   uint8_t type;
   uint8_t autopilot;
-  uint8_t mode;
+  uint16_t mode;
+  uint16_t custom_mode;
   uint8_t state;
   uint8_t system_id;
   uint8_t comp_id;

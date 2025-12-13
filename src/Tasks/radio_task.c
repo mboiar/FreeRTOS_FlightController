@@ -9,23 +9,18 @@
 #include "usart.h"
 #include <stdint.h>
 
-typedef struct {
-  float roll, pitch, yaw, throttle;
-  FLIGHT_MODE mode;
-  uint8_t arm;
-} rc_scaled_t;
-
 #define CRSF_TO_SCALED(x, range, mid)                                          \
   (((x - RC_VAL_MID) * range) / RC_RANGE + mid)
 
 void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
-
+  rc_scaled->ts = get_time_since_boot_us();
   rc_scaled->mode =
       (raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL_MIN) / (RC_RANGE / 3);
   rc_scaled->arm =
       (raw_rc->ch_data[RC_MAP_CH_ARM] - RC_VAL_MIN) / (RC_RANGE / 2);
   switch (rc_scaled->mode) {
-  case FLIGHT_MODE_LOITER:
+  case FLIGHT_MODE_ACRO:
+    fc_state.custom_mode = FLIGHT_MODE_ACRO;
     rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
                                     RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
@@ -34,6 +29,14 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
                                       RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->throttle = CRSF_TO_SCALED(
         (float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], RC_VEL_RANGE, RC_VEL_MID);
+    break;
+  case FLIGHT_MODE_ALTHOLD:
+    fc_state.custom_mode = FLIGHT_MODE_ALTHOLD;
+    break;
+  case FLIGHT_MODE_GUIDED:
+
+    // reject if gps not available
+    fc_state.custom_mode = FLIGHT_MODE_GUIDED;
     break;
   default:
     break;
@@ -54,7 +57,7 @@ crsf_rc_t rc_data;
 void TaskRadioRX(void *argument) {
   crsf_frame_t frame;
   crsf_state_t crsf_state = CRSF_ADDR;
-  uint8_t rx_buf[256] = {0};
+  uint8_t rx_buf[64] = {0};
   mavlink_message_t msg;
   TickType_t cur_tick, last_tick = 0, timeout = pdMS_TO_TICKS(300);
   size_t n;

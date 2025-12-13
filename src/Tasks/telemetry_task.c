@@ -2,11 +2,16 @@
 #include "Tasks.h"
 #include "common/mavlink.h"
 #include "logger.h"
+#include "tim.h"
 #include "usart.h"
 
 #ifdef FC_ENABLE_RUNTIME_STATS
 static char buf[512];
 #endif
+
+uint32_t get_time_since_boot_us() {
+  return __HAL_TIM_GET_COUNTER(&htim5) * 100;
+}
 
 /**
  * @brief Sends telemetry

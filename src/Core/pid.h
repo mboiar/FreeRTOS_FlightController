@@ -10,7 +10,7 @@ typedef struct {
 } pid_s;
 
 typedef struct {
-  pid_s pid_roll, pid_pitch, pid_yaw;
+  pid_s pid_x, pid_y, pid_z;
 } pid3d_s;
 
 typedef struct {
@@ -33,3 +33,5 @@ void pid_init(pid_s *pid, float Kp, float Ki, float Kd, float out_max,
 
 // pid_compute - Return PID value based on measurement.
 float pid_compute(pid_s *pid, float meas, float sp, float dt);
+
+float clamp(float val, float min, float max);

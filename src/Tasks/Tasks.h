@@ -25,8 +25,17 @@ typedef enum {
   TaskID_LEN
 } TaskID;
 
+typedef struct {
+  float roll, pitch, yaw, throttle;
+  uint16_t mode;
+  uint8_t arm;
+  uint32_t ts;
+} rc_scaled_t;
+
 extern FC_State fc_state;
 extern GPS_data gps_data;
+
+extern float vel_cmd[4];
 
 extern osThreadId_t TaskSensorHandle;
 extern osThreadId_t TaskTelemetryHandle;
@@ -46,6 +55,7 @@ extern SemaphoreHandle_t imu_mutex;
 // extern hcsr04_sensor_t sensors[HCSR04_SENSOR_COUNT];
 
 extern crsf_rc_t rc_data;
+extern rc_scaled_t rc_scaled;
 
 extern float magcal_offset[3];
 extern float magcal_mat[3][3];
@@ -54,6 +64,10 @@ extern float mag_incl;
 extern accel3d_t offA;
 extern float scaleA[3];
 extern sensor_data_t imu_data;
+
+extern eskf_t eskf;
+
+uint32_t get_time_since_boot_us();
 
 void StartupTask(void *argument);
 void TaskSensor(void *argument);

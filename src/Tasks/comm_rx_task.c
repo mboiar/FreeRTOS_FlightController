@@ -14,6 +14,8 @@ static uint8_t rx_buf[128];
 
 GPS_data gps_data;
 
+float vel_cmd[4];
+
 typedef enum {
   MAV_SET_OFFSET_SENSOR_TYPE_GYRO,
   MAV_SET_OFFSET_SENSOR_TYPE_ACC,
@@ -115,6 +117,20 @@ static void handleGPSMsg(const mavlink_message_t *msg) {
   xTaskNotify(TaskSensorHandle, SENSOR_FUSE_GPS, eSetBits);
 }
 
+static void handleSetPositionMsg(const mavlink_message_t *msg) {
+  mavlink_set_position_target_local_ned_t msg_decoded;
+  mavlink_msg_set_position_target_local_ned_decode(msg, &msg_decoded);
+
+  // TODO expiration check
+  if (msg_decoded.coordinate_frame == MAV_FRAME_BODY_FRD) {
+    vel_cmd[0] = msg_decoded.vx;
+    vel_cmd[1] = msg_decoded.vy;
+    vel_cmd[2] = msg_decoded.vz;
+    vel_cmd[3] = msg_decoded.yaw_rate;
+  }
+  xTaskNotify(TaskFlightLoopHandle, PID_SET_TARGET_VELOCITY, eSetBits);
+}
+
 /**
  * @brief Receive messages from serial port
  * @param argument: Not used
@@ -145,6 +161,8 @@ void TaskCommRx(void *argument) {
         case MAVLINK_MSG_ID_GPS_INPUT:
           handleGPSMsg(&msg);
           break;
+        case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
+          handleSetPositionMsg(&msg);
         }
       }
     }
