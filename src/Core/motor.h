@@ -12,3 +12,5 @@ typedef struct {
 void pwm_set_all(const motors_pwm_s *val);
 
 void pwm_init();
+
+void pwm_deinit();

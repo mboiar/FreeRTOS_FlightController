@@ -9,13 +9,16 @@
 #include "string.h"
 
 #define CRSF_TYPE_RC 0x16
-#define CRSF_TYPE_RC 0x16
-#define CRSF_TYPE_RC 0x16
 
-#define RC_VAL_MAX 1811U
-#define RC_VAL_MIN 174U
-#define RC_VAL_MID ((RC_VAL_MAX + RC_VAL_MIN) / 2U)
+#define RC_VAL_MAX (float)1811
+#define RC_VAL_MIN (float)174
+#define RC_VAL_MID ((RC_VAL_MAX + RC_VAL_MIN) / (float)2)
 #define RC_RANGE (RC_VAL_MAX - RC_VAL_MIN)
+
+#define RC_VAL8_MAX (float)1792
+#define RC_VAL8_MIN (float)191
+#define RC_VAL8_MID ((RC_VAL8_MAX + RC_VAL8_MIN) / (float)2)
+#define RC_RANGE8 (RC_VAL8_MAX - RC_VAL8_MIN)
 
 #define CRSF_MAX_FRAME_LEN 64
 

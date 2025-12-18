@@ -82,7 +82,9 @@ static float median3(const float *arr) {
   SWAP(b, c)
 
 #undef SWAP
-
+  if (b < 0) {
+    return c;
+  }
   return b;
 }
 

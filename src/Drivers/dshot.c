@@ -26,7 +26,7 @@ typedef enum {
 
 TIM_HandleTypeDef *htim_esc = &htim1;
 
-static uint16_t dshot_pwm_buf0[DSHOT_DMA_BUF_SIZE];
+// static uint16_t dshot_pwm_buf0[DSHOT_DMA_BUF_SIZE];
 // static uint16_t dshot_pwm_buf1[DSHOT_DMA_BUF_SIZE];
 // static uint16_t dshot_pwm_buf2[DSHOT_DMA_BUF_SIZE];
 // static uint16_t dshot_pwm_buf3[DSHOT_DMA_BUF_SIZE];
@@ -52,11 +52,12 @@ void dshot_init(dshot_type_t type) {
 
 static void dshot_build_pwm(uint16_t *buf, uint16_t frame) {
   for (size_t i = 0; i < 16; i++) {
-    buf[i] = (frame & 0x8000) ? (htim_esc->Instance->ARR * 76) / 100
-                              : (htim_esc->Instance->ARR * 38) / 100;
+    buf[i] = (frame & 0x8000) ? (ticks_per_bit * 76) / 100
+                              : (ticks_per_bit * 38) / 100;
     frame <<= 1;
   }
   buf[16] = 0;
+  buf[27] = 0;
 }
 
 static uint16_t dshot_pack(uint16_t throttle, uint8_t telem) {
@@ -69,7 +70,7 @@ static uint16_t dshot_pack(uint16_t throttle, uint8_t telem) {
 
 int dshot_write(uint16_t data, uint8_t telem, uint8_t ch) {
   uint16_t frame = dshot_pack(data, telem);
-  dshot_build_pwm(dshot_pwm_buf0, frame);
+  // dshot_build_pwm(dshot_pwm_buf0, frame);
 
   HAL_TIM_PWM_Stop_DMA(&htim1, ch);
   // TODO: burst write
@@ -77,10 +78,10 @@ int dshot_write(uint16_t data, uint8_t telem, uint8_t ch) {
   //   (uint32_t*)dshot_pwm_buf0, TIM_DMABURSTLENGTH_4TRANSFERS) != HAL_OK) {
   //     return -1;
   //   }
-  if (HAL_TIM_PWM_Start_DMA(&htim1, ch, (uint32_t *)dshot_pwm_buf0,
-                            DSHOT_DMA_BUF_SIZE) != HAL_OK) {
-    return -1;
-  }
+  // if (HAL_TIM_PWM_Start_DMA(&htim1, ch, (uint32_t *)dshot_pwm_buf0,
+  //                           DSHOT_DMA_BUF_SIZE) != HAL_OK) {
+  //   return -1;
+  // }
   return 0;
 }
 

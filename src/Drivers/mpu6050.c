@@ -117,9 +117,12 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
       (mpu6050_calc_accel(val.accel_y, AFS_2G) - offA->accel_y) * scaleA[1];
   acc->accel_z =
       (mpu6050_calc_accel(val.accel_z, AFS_2G) - offA->accel_z) * scaleA[2];
-  gyro->gyro_x = mpu6050_calc_gyro(val.gyro_x, FS_SEL_250); // - offG->gyro_x;
-  gyro->gyro_y = mpu6050_calc_gyro(val.gyro_y, FS_SEL_250); // - offG->gyro_y;
-  gyro->gyro_z = mpu6050_calc_gyro(val.gyro_z, FS_SEL_250); // - offG->gyro_z;
+  gyro->gyro_x =
+      -1.0f * mpu6050_calc_gyro(val.gyro_x, FS_SEL_250); // - offG->gyro_x;
+  gyro->gyro_y =
+      -1.0f * mpu6050_calc_gyro(val.gyro_y, FS_SEL_250); // - offG->gyro_y;
+  gyro->gyro_z =
+      -1.0f * mpu6050_calc_gyro(val.gyro_z, FS_SEL_250); // - offG->gyro_z;
   *temp = mpu6050_calc_temp(val.temp);
 
   return HAL_OK;

@@ -86,7 +86,10 @@ void Init() {
   HAL_TIM_Base_Start_IT(&htim5);
 
   fc_state.autopilot = MAV_AUTOPILOT_GENERIC;
-  fc_state.mode = MAV_MODE_FLAG_TEST_ENABLED | MAV_MODE_FLAG_HIL_ENABLED;
+  fc_state.mode = MAV_MODE_FLAG_TEST_ENABLED;
+  if (ENABLE_HIL) {
+    fc_state.mode |= MAV_MODE_FLAG_HIL_ENABLED;
+  }
   fc_state.type = MAV_TYPE_QUADROTOR;
   fc_state.state = MAV_STATE_BOOT;
   fc_state.system_id = 1;

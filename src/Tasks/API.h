@@ -30,6 +30,9 @@ typedef struct {
   uint8_t state;
   uint8_t system_id;
   uint8_t comp_id;
+  uint32_t sensors_detected; // TODO
+  uint32_t sensors_health;   // TODO
+  uint32_t sensors_enabled;
   uint64_t home_lon;
   uint64_t home_lat;
   float home_alt;

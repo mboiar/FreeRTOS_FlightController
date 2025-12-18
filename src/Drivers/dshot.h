@@ -18,7 +18,7 @@ typedef enum { DSHOT150 = 1, DSHOT300, DSHOT600 } dshot_type_t;
 
 #define dshotTYPE_TO_HZ(x) (uint32_t)(x * 150000U)
 
-#define DSHOT_DMA_BUF_SIZE 17
+#define DSHOT_DMA_BUF_SIZE 18
 
 // Initialize DSHOT communication
 // @param dshot_type DSHOT frequency

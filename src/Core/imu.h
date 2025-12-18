@@ -63,21 +63,21 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
  * @param gyro_m gyroscope measurement ?
  * @retval None
  */
-void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
-                  const float dt);
+int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
+                 const float dt);
 
 /**
  * @brief ESKF update using magnetometer measurement.
  * @retval None
  */
-void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov);
+int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov);
 
 /**
  * @brief ESKF update using barometer measurement.
  * @param baro_m barometer measurement in [m]
  * @retval None
  */
-void eskf_update_baro(eskf_t *eskf, float alt, float cov);
+int eskf_update_baro(eskf_t *eskf, float alt, float cov);
 
 void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov);
 
@@ -86,6 +86,8 @@ void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
 
 void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]);
 
-void eskf_get_cov_posvel(eskf_t *eskf, float dst[15]);
+void eskf_get_cov_posvel(eskf_t *eskf, float dst[21]);
 
 void eskf_get_cov_pos(eskf_t *eskf, float dst[9]);
+
+void quat_get_euler(const float q[4], float *roll, float *pitch, float *yaw);

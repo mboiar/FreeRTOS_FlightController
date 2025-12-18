@@ -17,3 +17,10 @@ void pwm_init() {
   HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_4);
 }
+
+void pwm_deinit() {
+  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_4);
+}

@@ -13,63 +13,65 @@ static void sensors_calibrate();
 static uint8_t sensors_calibrate_stationary();
 static HAL_StatusTypeDef sensors_init();
 
-sensor_data_t imu_data, tmp_data;
+sensor_data_t imu_data;
+static sensor_data_t tmp_data;
 
-GPIO_TypeDef *HCSR04_ECHO_PORT[HCSR04_SENSOR_COUNT] = {GPIOB, GPIOB, GPIOB,
-                                                       GPIOB, GPIOB, GPIOA};
+static GPIO_TypeDef *HCSR04_ECHO_PORT[HCSR04_SENSOR_COUNT] = {
+    GPIOB, GPIOB, GPIOB, GPIOB, GPIOB, GPIOA};
 
-uint16_t HCSR04_ECHO_PIN[HCSR04_SENSOR_COUNT] = {
+static uint16_t HCSR04_ECHO_PIN[HCSR04_SENSOR_COUNT] = {
     GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_10, GPIO_PIN_13, GPIO_PIN_15, GPIO_PIN_12};
 
-BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
-                                           .standby_time = 0, // 0.5 ms
-                                           .spi3w_en = 0};
+const BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
+                                                 .standby_time = 0, // 0.5 ms
+                                                 .spi3w_en = 0};
 
-BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
+const BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
     .mode = BMP_NORMAL,
     .temp_oversampling = 1,     // x1
     .pressure_oversampling = 4, // x8
 };
 
-float mpu_temp;
-BMP_CAL_T_PARAMS tp;
-BMP_CAL_P_PARAMS pp;
-BaseType_t queue_status;
-mavlink_message_t msg;
-TickType_t cur_tick, last_tick;
-float dt;
-size_t msglen;
+static float mpu_temp;
+static BMP_CAL_T_PARAMS tp;
+static BMP_CAL_P_PARAMS pp;
+static BaseType_t queue_status;
+static mavlink_message_t msg;
+static TickType_t cur_tick, last_tick;
+static float dt;
+static size_t msglen;
 
-mag3d_t mag;
+static mag3d_t mag;
 
 float magcal_offset[3];
 float magcal_mat[3][3];
 float mag_decl = MAG_DECL;
 float mag_incl;
-gyro3d_t offG;
+static gyro3d_t offG;
 accel3d_t offA;
 float scaleA[3];
 
 static uint32_t notif;
 float p_ref; // reference pressure
 float bmp_temp, bmp_pressure;
-gyro3d_t gyro_offset = {0, 0, 0};
-accel3d_t accel_offset = {0, 0, 0};
+static gyro3d_t gyro_offset = {0, 0, 0};
+static accel3d_t accel_offset = {0, 0, 0};
 
 eskf_t eskf;
 
 bool distance_sensor_ready_all = false;
 
-TickType_t tick_end, tick_start, last_dist_tick;
+static TickType_t tick_end, tick_start, last_dist_tick;
 
-float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
-      sigma_aw = ESKF_SAW, sigma_mag = EKSF_SMAG, sigma_baro = EKSF_SBARO;
+static float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
+             sigma_aw = ESKF_SAW, sigma_mag = EKSF_SMAG,
+             sigma_baro = EKSF_SBARO;
 
-static float PVcov[15], Qcov[9];
+static float PVcov[21], Qcov[9];
 
-hcsr04_sensor_t dist_sensors[HCSR04_SENSOR_COUNT];
+static hcsr04_sensor_t dist_sensors[HCSR04_SENSOR_COUNT];
 static float dist_buf[HCSR04_SENSOR_COUNT][HCSR04_BUFFER_LEN];
-int dist_meas_cnt = 0;
+static int dist_meas_cnt = 0;
 static bool dist_filter_init[HCSR04_SENSOR_COUNT] = {0};
 
 /**
@@ -92,8 +94,9 @@ void TaskSensor(void *argument) {
   size_t tick = 0; // 200 Hz
 
   for (;;) {
-    cur_tick = xTaskGetTickCount();
     if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
+      cur_tick = xTaskGetTickCount();
+
       if (notif & SENSOR_CALIBRATION_START) {
         notif &= ~SENSOR_CALIBRATION_START;
         sensors_calibrate();
@@ -128,26 +131,31 @@ void TaskSensor(void *argument) {
                 } while (!(notif & SENSOR_FUSE_GPS));
               }
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
-              fc_state.state = MAV_STATE_ACTIVE;
+              fc_state.state = MAV_STATE_STANDBY;
             }
           }
 
-        } else if (fc_state.state == MAV_STATE_ACTIVE) {
+        } else if ((fc_state.state == MAV_STATE_ACTIVE) ||
+                   (fc_state.state == MAV_STATE_STANDBY)) {
           tick_start = xTaskGetTickCount();
           if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
                                 &gyro_offset, &offA, scaleA) != HAL_OK) {
-            // TODO: handle error
+            fc_state.state = MAV_STATE_EMERGENCY;
           }
           dt = (__HAL_TIM_GET_COUNTER(&htim5) * 100 - last_tick) /
                1000000.0f; // s
-          eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
-                       (float)((dt > 0.0f) ? dt : 1.0f / 1000.0f));
+
+          if (eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
+                           (float)((dt > 0.0f) ? dt : 1.0f / 1000.0f)) < 0) {
+            fc_state.state = MAV_STATE_CRITICAL;
+          }
+
           last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100;
 
           tick_end = xTaskGetTickCount();
-          msglen = mavlink_msg_param_value_pack(
-              1, MAV_COMP_ID_AUTOPILOT1, &msg, " EKF_EXEC_TIME ",
-              (float)(tick_end - tick_start), 0, 1, 0);
+          // msglen = mavlink_msg_param_value_pack(
+          //     1, MAV_COMP_ID_AUTOPILOT1, &msg, " EKF_EXEC_TIME ",
+          //     (float)(tick_end - tick_start), 0, 1, 0);
           // comm_tx_send(&msg);
           if (tick % 10 == 0) { // 20 Hz
             if (bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp, pp) !=
@@ -169,25 +177,17 @@ void TaskSensor(void *argument) {
                 mag.MagZ, bmp_pressure, bmp_pressure - p_ref, tmp_data.alt,
                 tmp_data.bmp_temp, 0xFFFF, 0);
             comm_tx_send(&msg);
-            msglen = mavlink_msg_attitude_quaternion_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
-                0, 0, Qcov);
-            comm_tx_send(&msg);
-            msglen = mavlink_msg_local_position_ned_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
-                eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
-                eskf.state.vel[2], 0, 0, 0, PVcov);
-            comm_tx_send(&msg);
 
-            eskf_update_yaw(&eskf, &mag, sigma_mag);
-            eskf_update_baro(&eskf, tmp_data.alt, sigma_baro);
-            if (notif & SENSOR_FUSE_GPS) {
-              eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
-                              fc_state.home_lat, fc_state.home_alt);
-            }
-            eskf_get_cov_posvel(&eskf, PVcov);
-            eskf_get_cov_orientation(&eskf, Qcov);
+            // if (eskf_update_yaw(&eskf, &mag, sigma_mag) < 0 ||
+            //     eskf_update_baro(&eskf, tmp_data.alt, sigma_baro) < 0) {
+            //   // disable auto, revert to manual rc
+            // }
+
+            // if (notif & SENSOR_FUSE_GPS) {
+            // // TODO set health
+            //   eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
+            //                   fc_state.home_lat, fc_state.home_alt);
+            // }
           }
           if (tick % 20 == 0) { // 10 Hz
             if (dist_meas_cnt % HCSR04_BUFFER_LEN ==
@@ -220,6 +220,19 @@ void TaskSensor(void *argument) {
             }
             hcsr04_trigger();
             last_dist_tick = xTaskGetTickCount();
+
+            eskf_get_cov_posvel(&eskf, PVcov);
+            eskf_get_cov_orientation(&eskf, Qcov);
+            msglen = mavlink_msg_attitude_quaternion_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
+                0, 0, Qcov);
+            comm_tx_send(&msg);
+            msglen = mavlink_msg_local_position_ned_cov_pack(
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+                MAV_ESTIMATOR_TYPE_NAIVE, eskf.state.pos[0], eskf.state.pos[1],
+                eskf.state.pos[2], eskf.state.vel[0], eskf.state.vel[1],
+                eskf.state.vel[2], 0, 0, 0, PVcov);
+            comm_tx_send(&msg);
           }
 
           // xTaskNotifyWait(pdFALSE, 0, &notif, 0);
@@ -232,6 +245,8 @@ void TaskSensor(void *argument) {
           //   xSemaphoreTake(imu_mutex, portMAX_DELAY);
           imu_data = tmp_data;
           //   xSemaphoreGive(imu_mutex);
+        } else if (fc_state.state == MAV_STATE_CRITICAL) {
+          LOG_CRIT(0, "FC_STATE_CRITICAL");
         }
       }
     }

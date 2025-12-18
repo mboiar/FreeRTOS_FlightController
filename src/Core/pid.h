@@ -21,6 +21,10 @@ typedef struct {
   float roll, pitch, yaw;
 } vec3df;
 
+typedef struct {
+  float roll, pitch, yaw, throttle, ts;
+} setpoint_t;
+
 // pid_init - Initialize PID controller.
 // @param pid Pointer to a struct holding PID parameters
 // @param Kp Proportional gain

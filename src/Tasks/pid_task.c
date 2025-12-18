@@ -14,26 +14,87 @@
 #define CRSF_TO_DSHOT(x)                                                       \
   (((x - RC_VAL_MIN) * DSHOT_RANGE) / (RC_VAL_MAX - RC_VAL_MIN) + DSHOT_VAL_MID)
 
-static pid3d_s pid_rate, pid_pos;
+static pid3d_s pid_rate, pid_vel, pid_att;
 // pid_pos;
-static vec3df sp_rate, rate_out;
+static vec3df rate_out;
+static setpoint_t sp_rate;
 // sp_pos, rate_out, pos_out;
-static vec3df rate, att;
-static vec3df rc_rate;
+static vec3df rate, att_sp, state_att;
+// static vec3df rc_rate;
 static motors_pwm_s motors_pwm;
-static float sp_throttle;
 
-TickType_t last_time_ticks, now_ticks;
+static TickType_t last_time_ticks, now_ticks;
 static float dt, inner_dt;
 
 static uint16_t dshot_data;
-static sensor_data_t cur_imu_data;
+// static sensor_data_t cur_imu_data;
 
-static float vel_body[3];
+static float acc_cmd[3], vel_cmd_ned[3], pid_out[3];
 
 static uint32_t notif;
 
+static uint32_t arm_cnt;
+
 // rc_scaled_t rc_scaled;
+
+void rate_pid_loop() {
+  rate_out.roll =
+      pid_compute(&pid_rate.pid_x, imu_data.gyro.gyro_y - eskf.state.gyro_b[0],
+                  sp_rate.roll, dt);
+  rate_out.pitch =
+      pid_compute(&pid_rate.pid_y, imu_data.gyro.gyro_x - eskf.state.gyro_b[1],
+                  sp_rate.pitch, dt);
+  rate_out.yaw =
+      pid_compute(&pid_rate.pid_z, imu_data.gyro.gyro_z - eskf.state.gyro_b[2],
+                  sp_rate.yaw, dt);
+}
+
+void vel_pid_loop(float vel_cmd[3], float dt) {
+  acc_cmd[0] =
+      pid_compute(&pid_vel.pid_x, eskf.state.vel[0], vel_cmd[0], dt); // dt?
+  acc_cmd[1] = pid_compute(&pid_vel.pid_y, eskf.state.vel[1], vel_cmd[1], dt);
+  acc_cmd[2] = pid_compute(&pid_vel.pid_z, eskf.state.vel[2], vel_cmd[2], dt);
+  clamp(acc_cmd[0], -2, 2);
+  clamp(acc_cmd[1], -2, 2);
+  clamp(acc_cmd[2], -1, 1);
+  sp_rate.throttle = sqrtf(acc_cmd[0] * acc_cmd[0] + acc_cmd[1] * acc_cmd[1] +
+                           acc_cmd[2] * acc_cmd[2]);
+
+  att_sp.roll = atan2f(acc_cmd[1], acc_cmd[2]);
+  att_sp.pitch = atan2f(
+      -acc_cmd[0], sqrtf(acc_cmd[2] * acc_cmd[2] + acc_cmd[1] * acc_cmd[1]));
+}
+
+void att_pid_loop(float dt) {
+  quat_get_euler(eskf.state.quat, &state_att.roll, &state_att.pitch,
+                 &state_att.yaw);
+  sp_rate.roll = pid_compute(&pid_att.pid_x, state_att.roll, att_sp.roll,
+                             dt); // dt?
+  sp_rate.pitch =
+      pid_compute(&pid_att.pid_y, state_att.pitch, att_sp.pitch, dt);
+}
+
+void pid_log(uint32_t tick) {
+  static mavlink_message_t msg;
+
+  mavlink_msg_manual_setpoint_pack(
+      fc_state.system_id, fc_state.comp_id, &msg, tick, sp_rate.roll,
+      sp_rate.pitch, sp_rate.yaw, sp_rate.throttle, rc_scaled.mode, 0);
+  comm_tx_send(&msg);
+
+  pid_out[0] = rate_out.roll;
+  pid_out[1] = rate_out.pitch;
+  pid_out[2] = rate_out.yaw;
+
+  mavlink_msg_debug_float_array_pack(fc_state.system_id, fc_state.comp_id, &msg,
+                                     tick, "PID_OUT", 0, pid_out);
+  comm_tx_send(&msg);
+  mavlink_msg_servo_output_raw_pack(fc_state.system_id, fc_state.comp_id, &msg,
+                                    tick, 0, motors_pwm.bl, motors_pwm.br,
+                                    motors_pwm.fl, motors_pwm.fr, 0, 0, 0, 0, 0,
+                                    0, 0, 0, 0, 0, 0, 0);
+  comm_tx_send(&msg);
+}
 
 void pwm_set_pulse_us(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t us) {
   if (us < PWM_MIN)
@@ -43,65 +104,129 @@ void pwm_set_pulse_us(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t us) {
   __HAL_TIM_SET_COMPARE(htim, channel, us);
 }
 
+void set_pwm_out() {
+  motors_pwm.fr = PWM_MIN + clamp(sp_rate.throttle + rate_out.yaw -
+                                      rate_out.roll + rate_out.pitch,
+                                  0, 1) *
+                                (PWM_MAX - PWM_MIN);
+  motors_pwm.fl = PWM_MIN + clamp(sp_rate.throttle - rate_out.yaw +
+                                      rate_out.roll + rate_out.pitch,
+                                  0, 1) *
+                                (PWM_MAX - PWM_MIN);
+  motors_pwm.br = PWM_MIN + clamp(sp_rate.throttle - rate_out.yaw -
+                                      rate_out.roll - rate_out.pitch,
+                                  0, 1) *
+                                (PWM_MAX - PWM_MIN);
+  motors_pwm.bl = PWM_MIN + clamp(sp_rate.throttle + rate_out.yaw +
+                                      rate_out.roll - rate_out.pitch,
+                                  0, 1) *
+                                (PWM_MAX - PWM_MIN);
+}
+
+void write_pwm_vals() {
+  if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
+    // dshot_data = CRSF_TO_DSHOT(rc_data.ch_data[0]);
+    dshot_data = 69;
+    int res = dshot_write(dshot_data, 0, TIM_CHANNEL_1);
+    res = dshot_write(dshot_data, 0, TIM_CHANNEL_2);
+    res = dshot_write(dshot_data, 0, TIM_CHANNEL_3);
+    res = dshot_write(dshot_data, 0, TIM_CHANNEL_4);
+  } else {
+    pwm_set_pulse_us(&htim1, TIM_CHANNEL_1, clamp(motors_pwm.bl, 1000, 2000));
+    pwm_set_pulse_us(&htim1, TIM_CHANNEL_2, clamp(motors_pwm.br, 1000, 2000));
+    pwm_set_pulse_us(&htim1, TIM_CHANNEL_3, clamp(motors_pwm.fl, 1000, 2000));
+    pwm_set_pulse_us(&htim1, TIM_CHANNEL_4, clamp(motors_pwm.fr, 1000, 2000));
+  }
+}
+
+void init_motors() {
+
+  if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
+    dshot_init(DSHOT300);
+    for (int i = 0; i < 1000; i++) {
+      dshot_write(0, 0, TIM_CHANNEL_2);
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  } else {
+    pwm_init();
+    // arming
+    motors_pwm.bl = PWM_MIN;
+    motors_pwm.br = PWM_MIN;
+    motors_pwm.fl = PWM_MIN;
+    motors_pwm.fr = PWM_MIN;
+    pwm_set_all(&motors_pwm);
+    vTaskDelay(pdMS_TO_TICKS(2));
+    motors_pwm.bl = PWM_MAX;
+    motors_pwm.br = PWM_MAX;
+    motors_pwm.fl = PWM_MAX;
+    motors_pwm.fr = PWM_MAX;
+    pwm_set_all(&motors_pwm);
+    vTaskDelay(pdMS_TO_TICKS(2));
+    motors_pwm.bl = PWM_MIN;
+    motors_pwm.br = PWM_MIN;
+    motors_pwm.fl = PWM_MIN;
+    motors_pwm.fr = PWM_MIN;
+    pwm_set_all(&motors_pwm);
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+
+void deinit_motors() {
+  if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
+    // TODO
+  } else {
+    pwm_deinit();
+  }
+}
+
+void arm() {
+  if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
+    init_motors();
+  }
+  fc_state.state = MAV_STATE_ACTIVE;
+}
+
+void disarm() {
+  if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
+    deinit_motors();
+  }
+  fc_state.state = MAV_STATE_STANDBY;
+}
+
 /**
  * @brief Flight Loop
  * @param argument: Not used
  * @retval None
  */
 void TaskFlightLoop(void *argument) {
-  mavlink_message_t msg;
 
   // TODO: tune PID parameters
-  pid_init(&pid_rate.pid_x, 0.01, 0.0, 0, -100, 100);
-  pid_init(&pid_rate.pid_y, 0.01, 0.0, 0, -100, 100);
-  pid_init(&pid_rate.pid_z, 0.01, 0.0, 0, -100, 100);
-  pid_init(&pid_pos.pid_x, 0.01, 0.0, 0.0, -100, 100);
-  pid_init(&pid_pos.pid_y, 0.01, 0.0, 0.0, -100, 100);
-  pid_init(&pid_pos.pid_z, 0.01, 0.0, 0.0, -100, 100);
+  pid_init(&pid_rate.pid_x, 0.1, 0.0, 0, -100, 100);
+  pid_init(&pid_rate.pid_y, 0.1, 0.0, 0, -100, 100);
+  pid_init(&pid_rate.pid_z, 0.1, 0.0, 0, -100, 100);
+  pid_init(&pid_vel.pid_x, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_vel.pid_y, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_vel.pid_z, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_x, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_y, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_z, 0.1, 0.0, 0.0, -100, 100);
 
-  if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
-    if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
-      dshot_init(DSHOT300);
-      for (int i = 0; i < 1000; i++) {
-        dshot_write(0, 0, TIM_CHANNEL_2);
-        vTaskDelay(pdMS_TO_TICKS(1));
-      }
-    } else {
-      pwm_init();
-      // arming
-      motors_pwm.bl = PWM_MIN;
-      motors_pwm.br = PWM_MIN;
-      motors_pwm.fl = PWM_MIN;
-      motors_pwm.fr = PWM_MIN;
-      pwm_set_all(&motors_pwm);
-      vTaskDelay(pdMS_TO_TICKS(2));
-      motors_pwm.bl = PWM_MAX;
-      motors_pwm.br = PWM_MAX;
-      motors_pwm.fl = PWM_MAX;
-      motors_pwm.fr = PWM_MAX;
-      pwm_set_all(&motors_pwm);
-      vTaskDelay(pdMS_TO_TICKS(2));
-      motors_pwm.bl = PWM_MIN;
-      motors_pwm.br = PWM_MIN;
-      motors_pwm.fl = PWM_MIN;
-      motors_pwm.fr = PWM_MIN;
-      pwm_set_all(&motors_pwm);
-      vTaskDelay(pdMS_TO_TICKS(2));
-    }
-  }
+  static uint32_t last_tick, tick, last_inner_tick;
 
-  uint32_t last_tick = get_time_since_boot_us(), tick, last_inner_tick;
+  last_tick = get_time_since_boot_us();
+  last_inner_tick = get_time_since_boot_us();
 
-  // dshot_set_direction(0, TIM_CHANNEL_1);
+  arm_cnt = 0;
 
   for (;;) {
-
     // run with 200 Hz freq
     if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
       if (notif & PID_COMPUTE) {
+
         notif &= ~PID_COMPUTE;
 
-        if (!(fc_state.state & MAV_STATE_ACTIVE)) {
+        if (!((fc_state.state & MAV_STATE_ACTIVE) ||
+              fc_state.state & MAV_STATE_STANDBY)) {
           continue;
         }
         tick = get_time_since_boot_us();
@@ -118,110 +243,112 @@ void TaskFlightLoop(void *argument) {
         // inner PID
 
         switch (fc_state.custom_mode) {
+        default:
         case FLIGHT_MODE_ACRO:
           // check if expired
           if (tick - rc_scaled.ts > 50000) {
             // TODO log
             // continue;
           }
+
+          if (arm_cnt == 400) {
+            if (fc_state.state == MAV_STATE_STANDBY) {
+              arm();
+            } else if (fc_state.state == MAV_STATE_ACTIVE) {
+              disarm();
+            }
+            arm_cnt = 0;
+          }
+
+          if (rc_scaled.arm && rc_scaled.throttle == 0) {
+            arm_cnt++;
+            continue;
+          } else {
+            arm_cnt = 0;
+          }
+
           sp_rate.roll = rc_scaled.roll / 180.0f * M_PI;
           sp_rate.pitch = rc_scaled.pitch / 180.0f * M_PI;
           sp_rate.yaw = rc_scaled.yaw / 180.0f * M_PI;
-          sp_throttle = rc_scaled.throttle;
-          rate_out.roll = pid_compute(
-              &pid_rate.pid_x, imu_data.gyro.gyro_y - eskf.state.gyro_b[0],
-              sp_rate.roll, dt);
-          rate_out.pitch = pid_compute(
-              &pid_rate.pid_y, imu_data.gyro.gyro_x - eskf.state.gyro_b[1],
-              sp_rate.pitch, dt);
-          rate_out.yaw = pid_compute(
-              &pid_rate.pid_z, imu_data.gyro.gyro_z - eskf.state.gyro_b[2],
-              sp_rate.yaw, dt);
-          mavlink_msg_manual_setpoint_pack(
-              fc_state.system_id, fc_state.comp_id, &msg, tick, sp_rate.roll,
-              sp_rate.pitch, sp_rate.yaw, sp_throttle, rc_scaled.mode, 0);
-          comm_tx_send(&msg);
-          float pid_out[3] = {rate_out.roll, rate_out.pitch, rate_out.yaw};
-          mavlink_msg_debug_float_array_pack(fc_state.system_id,
-                                             fc_state.comp_id, &msg, tick,
-                                             "PID output", 0, pid_out);
-          comm_tx_send(&msg);
+          sp_rate.throttle = rc_scaled.throttle * 0.5;
+          sp_rate.ts = rc_scaled.ts;
 
           break;
-        case FLIGHT_MODE_ALTHOLD:
-          /* code */
-          // continue;
-          break;
+
         case FLIGHT_MODE_GUIDED:
+          // desired velocity -> desired acceleration NED
+          if (notif & PID_SET_TARGET_VELOCITY) {
+            notif &= ~PID_SET_TARGET_VELOCITY;
+            // quat_rotate_vec(vel_body, eskf.state.quat,
+            //                 eskf.state.vel); // world -> body
+            sp_rate.yaw = vel_cmd[3];
+            sp_rate.ts = tick; // todo: timestamp
+            quat_rotate_vec(vel_cmd_ned, eskf.state.quat,
+                            vel_cmd); // body -> world
+            vel_pid_loop(vel_cmd_ned, dt);
 
-          break;
-        default:
-          // continue;
-          break;
-        }
-
-        if (notif & PID_SET_TARGET_VELOCITY &&
-            fc_state.custom_mode == FLIGHT_MODE_GUIDED) {
-          quat_rotate_vec(vel_body, eskf.state.quat,
-                          vel_body); // body->world
-          att.roll =
-              pid_compute(&pid_pos.pid_x, vel_body[0], vel_cmd[0], dt); // dt?
-          att.pitch = pid_compute(&pid_pos.pid_y, vel_body[1], vel_cmd[1], dt);
-          att.yaw = pid_compute(&pid_pos.pid_z, vel_body[2], vel_cmd[2], dt);
-        }
-
-        // 50 Hz
-        if (tick % 4 == 0) {
-          // outer PID
-          // velocity PID
-          inner_dt = (float)(tick - last_inner_tick) / 1000000.0f;
-          last_inner_tick = tick;
-          rate.roll =
-              pid_compute(&pid_pos.pid_x, vel_body[0], vel_cmd[0], dt); // dt?
-          rate.pitch = pid_compute(&pid_pos.pid_y, vel_body[1], vel_cmd[1], dt);
-          rate.yaw = pid_compute(&pid_pos.pid_z, vel_body[2], vel_cmd[2], dt);
-        }
-
-        motors_pwm.fr = PWM_MIN + clamp(sp_throttle + sp_rate.yaw +
-                                            rate_out.roll + rate_out.pitch,
-                                        0, 1) *
-                                      (PWM_MAX - PWM_MIN);
-        motors_pwm.fl = PWM_MIN + clamp(sp_throttle - sp_rate.yaw -
-                                            rate_out.roll + rate_out.pitch,
-                                        0, 1) *
-                                      (PWM_MAX - PWM_MIN);
-        motors_pwm.br = PWM_MIN + clamp(sp_throttle - sp_rate.yaw +
-                                            rate_out.roll - rate_out.pitch,
-                                        0, 1) *
-                                      (PWM_MAX - PWM_MIN);
-        motors_pwm.bl = PWM_MIN + clamp(sp_throttle + sp_rate.yaw -
-                                            rate_out.roll - rate_out.pitch,
-                                        0, 1) *
-                                      (PWM_MAX - PWM_MIN);
-
-        mavlink_msg_servo_output_raw_pack(
-            fc_state.system_id, fc_state.comp_id, &msg, tick, 0, motors_pwm.bl,
-            motors_pwm.br, motors_pwm.fl, motors_pwm.fr, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0);
-        comm_tx_send(&msg);
-
-        if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
-          if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
-            // dshot_data = CRSF_TO_DSHOT(rc_data.ch_data[0]);
-            dshot_data = 69;
-            int res = dshot_write(dshot_data, 0, TIM_CHANNEL_1);
-            res = dshot_write(dshot_data, 0, TIM_CHANNEL_2);
-            res = dshot_write(dshot_data, 0, TIM_CHANNEL_3);
-            res = dshot_write(dshot_data, 0, TIM_CHANNEL_4);
           } else {
-            pwm_set_pulse_us(&htim1, TIM_CHANNEL_1,
-                             clamp(motors_pwm.bl, 1000, 2000));
-            pwm_set_pulse_us(&htim1, TIM_CHANNEL_2,
-                             clamp(motors_pwm.br, 1000, 2000));
-            pwm_set_pulse_us(&htim1, TIM_CHANNEL_3,
-                             clamp(motors_pwm.fl, 1000, 2000));
-            pwm_set_pulse_us(&htim1, TIM_CHANNEL_4,
-                             clamp(motors_pwm.fr, 1000, 2000));
+            // ???
+          }
+
+          // 50 Hz
+          if (tick % 4 == 0) {
+            // attitude pid
+            inner_dt = (float)(tick - last_inner_tick) / 1000000.0f;
+            last_inner_tick = tick;
+
+            att_pid_loop(inner_dt);
+          }
+
+          break;
+
+        case FLIGHT_MODE_POSHOLD:
+
+          if (arm_cnt == 400) {
+            if (fc_state.state == MAV_STATE_STANDBY) {
+              arm();
+            } else if (fc_state.state == MAV_STATE_ACTIVE) {
+              disarm();
+            }
+            arm_cnt = 0;
+          }
+
+          if (rc_scaled.arm && rc_scaled.throttle == 0 &&
+              eskf.state.pos[2] < 0.1f) {
+            arm_cnt++;
+            continue;
+          } else {
+            arm_cnt = 0;
+          }
+
+          sp_rate.yaw = rc_scaled.yaw / 180.0f * M_PI;
+          sp_rate.ts = rc_scaled.ts;
+          vel_cmd_ned[0] = rc_scaled.roll;
+          vel_cmd_ned[1] = rc_scaled.pitch;
+          vel_cmd_ned[2] = rc_scaled.throttle;
+
+          vel_pid_loop(vel_cmd_ned, dt);
+
+          if (tick % 4 == 0) {
+            // attitude pid
+
+            att_pid_loop(dt * 4);
+          }
+          break;
+        }
+
+        // reject old setpoints
+        if (tick - sp_rate.ts < 50000) {
+          rate_pid_loop();
+          set_pwm_out();
+
+          if (PID_DEBUG) {
+            pid_log(tick);
+          }
+
+          if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED) &&
+              (fc_state.state == MAV_STATE_ACTIVE)) {
+            write_pwm_vals();
           }
         }
       }

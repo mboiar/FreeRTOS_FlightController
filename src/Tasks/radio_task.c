@@ -14,10 +14,10 @@
 
 void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
   rc_scaled->ts = get_time_since_boot_us();
-  rc_scaled->mode =
-      (raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL_MIN) / (RC_RANGE / 3);
+  rc_scaled->mode = (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL8_MIN) /
+                              (RC_RANGE8 / 2));
   rc_scaled->arm =
-      (raw_rc->ch_data[RC_MAP_CH_ARM] - RC_VAL_MIN) / (RC_RANGE / 2);
+      (uint8_t)((raw_rc->ch_data[RC_MAP_CH_ARM] - RC_VAL8_MIN) / (RC_RANGE8));
   switch (rc_scaled->mode) {
   case FLIGHT_MODE_ACRO:
     fc_state.custom_mode = FLIGHT_MODE_ACRO;
@@ -27,18 +27,36 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
                                      RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
                                       RC_VEL_RANGE, RC_VEL_MID);
-    rc_scaled->throttle = CRSF_TO_SCALED(
-        (float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->throttle =
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
     break;
-  case FLIGHT_MODE_ALTHOLD:
-    fc_state.custom_mode = FLIGHT_MODE_ALTHOLD;
+  case FLIGHT_MODE_POSHOLD:
+    // check if mode allowed: need gps
+    if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
+      LOG_ERR(0, "NEED_GPS_FOR_POSHOLD");
+      break;
+    }
+    fc_state.custom_mode = FLIGHT_MODE_POSHOLD;
+    rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
+                                    RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
+                                     RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
+                                      RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->throttle =
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
     break;
   case FLIGHT_MODE_GUIDED:
 
-    // reject if gps not available
+    // check if mode allowed: need gps
+    if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
+      LOG_ERR(0, "NEED_GPS_FOR_GUILDED");
+      break;
+    }
     fc_state.custom_mode = FLIGHT_MODE_GUIDED;
     break;
   default:
+    LOG_ERR(0, "RADIO_MODE_UNSUPPORTED %d", rc_scaled->mode);
     break;
   }
 }
@@ -55,12 +73,12 @@ crsf_rc_t rc_data;
  * @retval None
  */
 void TaskRadioRX(void *argument) {
-  crsf_frame_t frame;
-  crsf_state_t crsf_state = CRSF_ADDR;
-  uint8_t rx_buf[64] = {0};
-  mavlink_message_t msg;
-  TickType_t cur_tick, last_tick = 0, timeout = pdMS_TO_TICKS(300);
-  size_t n;
+  static crsf_frame_t frame;
+  static crsf_state_t crsf_state = CRSF_ADDR;
+  static uint8_t rx_buf[64] = {0};
+  static mavlink_message_t msg;
+  static TickType_t cur_tick, last_tick = 0, timeout = pdMS_TO_TICKS(300);
+  static size_t n;
 
   // Begin receiving rc data in circular mode
   HAL_StatusTypeDef res =

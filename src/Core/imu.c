@@ -8,6 +8,7 @@
 #include <memory.h>
 #include <stdint.h>
 
+#include "logger.h"
 #include "quat_utils.h"
 
 // float acc_noise = 1e-3f;  // m/s^2/sqrt(s)
@@ -222,16 +223,16 @@ static inline void vec3_cross(float a[3], float b[3], float dst[3]) {
   dst[2] = a[0] * b[1] - a[1] * b[0];
 }
 
-static inline void vec_skew(float dst[9], float src[3]) {
+static inline void vec_skew(float dst[9], const float src[3]) {
   dst[0] = 0;
   dst[1] = -src[2];
   dst[2] = src[1];
-  dst[8] = 0;
   dst[3] = src[2];
-  dst[6] = -src[1];
   dst[4] = 0;
   dst[5] = -src[0];
+  dst[6] = -src[1];
   dst[7] = src[0];
+  dst[8] = 0;
 }
 
 static inline void quat_from_two_vectors(float dst[4], float src1[3],
@@ -264,8 +265,7 @@ static inline void euler_to_quat(float q[4], float roll, float pitch,
   q[3] = cr * cp * sy - sr * sp * cy; // z
 }
 
-static void quat_get_euler(const float q[4], float *roll, float *pitch,
-                           float *yaw) {
+void quat_get_euler(const float q[4], float *roll, float *pitch, float *yaw) {
 
   float w = q[0];
   float x = q[1];
@@ -319,9 +319,14 @@ static float gyro_quat[4];
 static float a_x[9], Rq[9], wrot[9];
 arm_status status;
 
-void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
-                  const float dt) {
+int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
+                 const float dt) {
   arm_status status;
+
+  if (dt <= 0 || dt > 1) {
+    LOG_ERR(0, "ESKF_INV_DT %f", dt);
+    return 0;
+  }
   // float quat_body_to_ned[4];
 
   // update nominal state
@@ -340,9 +345,9 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   // rot_to_quat(gyro_quat, gyro_body_int);
   euler_to_quat(gyro_quat, gyro_body_int[0], gyro_body_int[1],
                 gyro_body_int[2]);
-  quat_rotate_vec(acc_glob, eskf->state.quat, acc_body); // body -> world
   quat_mul(eskf->state.quat, eskf->state.quat, gyro_quat);
   quat_norm(eskf->state.quat);
+  quat_rotate_vec(acc_glob, eskf->state.quat, acc_body); // body -> world
 
   // integrate nominal kinematics
   for (int i = 0; i < 3; i++) {
@@ -351,12 +356,18 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
     eskf->state.vel[i] += dt * (acc_glob[i] + eskf->state.g[i]);
   }
 
+  if (!isfinite(eskf->state.quat[0])) {
+    LOG_CRIT(0, "ESKF_QUAT_INF");
+    return -2;
+  }
+
   // update covariance
   // -R[am-ab]x dt
   vec_skew(a_x, acc_body);
   quat_to_rot_mat(Rq, eskf->state.quat);
   status = arm_mat_mult_f32(&R, &Ra, &Ra);
   status = arm_mat_scale_f32(&Ra, -dt, &Ra);
+  status = arm_mat_scale_f32(&R, -dt, &R);
 
   // RT{(wm-wb)dt}
   quat_to_rot_mat(wrot, gyro_quat);
@@ -373,7 +384,6 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   mat_set_diag(&F, 9, 9, 1);
   mat_set_diag(&F, 12, 12, 1);
   mat_set_diag(&F, 6, 12, -dt);
-  mat_scale3x3(&F, 3, 9, -dt);
 
   // set Q
   memset(Q_data, 0, sizeof(Q_data));
@@ -387,6 +397,21 @@ void eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   status = arm_mat_mult_f32(&F, &P, &F);
   status = arm_mat_mult_f32(&F, &Ft, &P);
   status = arm_mat_add_f32(&P, &Q, &P);
+
+  for (int i = 0; i < P.numCols; i++) {
+    if (!isfinite(P_data[i * P.numCols + i])) {
+      LOG_ERR(0, "ESKF_COV_NAN at %d", i * P.numCols + i);
+
+      // Reset covariance to still be able to receive updates
+      memset(P_data, 0, sizeof(P_data));
+      return 0;
+    }
+    if (P_data[i * P.numCols + i] < 0) {
+      P_data[i * P.numCols + i] = 0;
+    }
+  }
+
+  return 0;
 
   // update error state (mean is initialized to 0, so not necessary)
   // dx = Fx * dx
@@ -485,7 +510,7 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   arm_mat_init_f32(&HPHic3, m3, m3, HPHic3_data);
 }
 
-void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
+int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   float mag_meas[3] = {mag->MagY, mag->MagX, -mag->MagZ};
   // Normalize magnetometer measurement: we only need orientation
   vec_norm(mag_meas);
@@ -555,10 +580,12 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   status = arm_mat_add_f32(&HPH, &V, &HPH); // m * m
   memcpy(HPHic_data, HPH_data, sizeof(HPH_data));
   status = arm_mat_inverse_f32(&HPHic, &HPHi); // = m * m
+
   if (status == ARM_MATH_SINGULAR) {
-    // TODO: log
-    return;
+    LOG_ERR(0, "SINGULAR_MATRIX");
+    return -1;
   }
+
   status = arm_mat_mult_f32(&Ht, &HPHi, &Ht); // = 15 * m
   status = arm_mat_mult_f32(&P, &Ht, &K);     // = 15 * m
 
@@ -576,6 +603,16 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   // P <- P - K(HPH.T+V)K.T
   arm_mat_sub_f32(&P, &KP, &P);
 
+  for (int i = 0; i < P.numCols; i++) {
+    if (!isfinite(P_data[i * P.numCols + i])) {
+      LOG_CRIT(0, "ESKF_COV_INF at %d", i * P.numCols + i < 0);
+      return -1;
+    }
+    if (P_data[i * P.numCols + i] < 0) {
+      P_data[i * P.numCols + i] = 0;
+    }
+  }
+
   // inject error-state
   euler_to_quat(quat_rot, 0, 0, eskf->dx[8]);
   quat_mul(eskf->state.quat, eskf->state.quat, quat_rot);
@@ -583,6 +620,8 @@ void eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
 
   // reset error-state mean
   memset(eskf->dx, 0, sizeof(eskf->dx));
+
+  return 0;
 }
 
 void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
@@ -639,7 +678,7 @@ void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
   memset(&eskf->dx, 0, sizeof(eskf->dx));
 }
 
-void eskf_update_baro(eskf_t *eskf, float alt, float cov) {
+int eskf_update_baro(eskf_t *eskf, float alt, float cov) {
   float alt_v[1] = {alt - eskf->state.pos[2]};
 
   // compute kalman gain
@@ -658,8 +697,8 @@ void eskf_update_baro(eskf_t *eskf, float alt, float cov) {
   memcpy(HPHic_data, HPH_data, sizeof(HPH_data));
   status = arm_mat_inverse_f32(&HPHic, &HPHi); // = m * m
   if (status == ARM_MATH_SINGULAR) {
-    // TODO: log
-    return;
+    LOG_ERR(0, "SINGULAR_MATRIX");
+    return -1;
   }
   status = arm_mat_mult_f32(&Ht, &HPHi, &Ht); // = 15 * m
   status = arm_mat_mult_f32(&P, &Ht, &K);     // = 15 * m
@@ -670,19 +709,30 @@ void eskf_update_baro(eskf_t *eskf, float alt, float cov) {
   // covariance update
   // symmetric form K(HPH.T+V)K.T
   // TODO: Joseph form
-  arm_mat_trans_f32(&K, &H);
-  arm_mat_mult_f32(&K, &HPH, &K);
-  arm_mat_mult_f32(&K, &H, &KP);
+  status = arm_mat_trans_f32(&K, &H);
+  status = arm_mat_mult_f32(&K, &HPH, &K);
+  status = arm_mat_mult_f32(&K, &H, &KP);
 
   // P <- P - K(HPH.T+V)K.T
-  arm_mat_sub_f32(&P, &KP, &P);
-  // set3x3(P_data, 6, 6, P_data, 15);
+  status = arm_mat_sub_f32(&P, &KP, &P);
+
+  for (int i = 0; i < P.numCols; i++) {
+    if (!isfinite(P_data[i * P.numCols + i])) {
+      LOG_CRIT(0, "ESKF_COV_INF at %d", i * P.numCols + i < 0);
+      return -1;
+    }
+    if (P_data[i * P.numCols + i] < 0) {
+      P_data[i * P.numCols + i] = 0;
+    }
+  }
 
   // inject error-state
   linv3(eskf->state.pos, eskf->state.pos, eskf->dx, 1, 1);
 
   // reset error-state mean
   memset(&eskf->dx, 0, sizeof(eskf->dx));
+
+  return 0;
 }
 
 void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov) {
@@ -749,8 +799,8 @@ void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]) {
   dst[8] = P_data[15 * 8 + 8];
 }
 
-void eskf_get_cov_posvel(eskf_t *eskf, float dst[15]) {
-  for (size_t i = 0; i < 15; i++) {
+void eskf_get_cov_posvel(eskf_t *eskf, float dst[21]) {
+  for (size_t i = 0; i < 21; i++) {
     dst[i] = P_data[(i / 6) * 15 + i % 6];
   }
 }

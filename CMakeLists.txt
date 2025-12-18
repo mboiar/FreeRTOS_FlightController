@@ -24,11 +24,13 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-# Set the project name
-set(CMAKE_PROJECT_NAME BlackPillFlightController)
-
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O3 -ffast-math")
 
+endif()
+
+# Set the project name
+set(CMAKE_PROJECT_NAME BlackPillFlightController)
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
