@@ -624,11 +624,16 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   return 0;
 }
 
-void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
-                     uint64_t home_lat, float home_alt) {
+int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
+                    int32_t home_lat, float home_alt, float hacc, float vacc,
+                    float sacc) {
   float pos_diff[3];
-  lla_to_ned(data->lat, data->lon, data->alt, home_lat, home_lon, home_alt,
-             pos_diff);
+  if (home_lat != 0) {
+    lla_to_ned(data->lat, data->lon, data->alt, home_lat, home_lon, home_alt,
+               pos_diff);
+  } else {
+    return -1;
+  }
 
   // compute kalman gain
   memset(H_data3, 0, sizeof(H_data));
@@ -651,7 +656,7 @@ void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
   status = arm_mat_inverse_f32(&HPHic3, &HPHi3); // = m * m
   if (status == ARM_MATH_SINGULAR) {
     // TODO: log
-    return;
+    return -1;
   }
   status = arm_mat_mult_f32(&Ht3, &HPHi3, &Ht3); // = 15 * m
   status = arm_mat_mult_f32(&P, &Ht3, &K3);      // = 15 * m
@@ -676,6 +681,8 @@ void eskf_update_gps(eskf_t *eskf, const GPS_data *data, uint64_t home_lon,
 
   // reset error-state mean
   memset(&eskf->dx, 0, sizeof(eskf->dx));
+
+  return 0;
 }
 
 int eskf_update_baro(eskf_t *eskf, float alt, float cov) {
@@ -800,8 +807,10 @@ void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]) {
 }
 
 void eskf_get_cov_posvel(eskf_t *eskf, float dst[21]) {
-  for (size_t i = 0; i < 21; i++) {
-    dst[i] = P_data[(i / 6) * 15 + i % 6];
+  for (size_t j = 0; j < 6; j++) {
+    for (size_t i = j; i < 6; i++) {
+      dst[j + i] = P_data[j * 15 + i];
+    }
   }
 }
 

@@ -114,6 +114,8 @@ static void handleGPSMsg(const mavlink_message_t *msg) {
   gps_data.lon = gps_msg.lon;
   gps_data.alt = gps_msg.alt;
   gps_data.time_usec = gps_msg.time_usec;
+  gps_data.ve = gps_msg.ve;
+  gps_data.vn = gps_msg.vn;
   xTaskNotify(TaskSensorHandle, SENSOR_FUSE_GPS, eSetBits);
 }
 

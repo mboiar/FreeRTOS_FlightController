@@ -57,9 +57,12 @@ const osThreadAttr_t TaskCommRx_attributes = {
 };
 
 QueueHandle_t xLogQueue;
+QueueHandle_t distQueue;
+
 state_t state;
 StreamBufferHandle_t crsfStream;
 StreamBufferHandle_t commRXStream;
+
 osThreadId_t TaskSensorHandle;
 osThreadId_t TaskTelemetryHandle;
 osThreadId_t TaskRadioRXHandle;
@@ -74,9 +77,11 @@ FC_State fc_state;
 
 static uint8_t crsfStream_Storage[CRSF_BUFFER_SIZE + 1];
 static uint8_t commStream_Storage[COMM_BUFFER_SIZE + 1];
+static uint8_t distQueue_Storage[12 * 6];
 
 static uint8_t logQueue_Storage[LOG_QUEUE_LEN * BUFFER_SIZE];
 static StaticStreamBuffer_t crsfStreamStruct;
+static StaticQueue_t distQueueStruct;
 static StaticStreamBuffer_t commRXStreamStruct;
 static StaticQueue_t logQueueStruct;
 
@@ -90,6 +95,9 @@ void Init() {
   if (ENABLE_HIL) {
     fc_state.mode |= MAV_MODE_FLAG_HIL_ENABLED;
   }
+  if (ENABLE_GUIDED) {
+    fc_state.mode |= MAV_MODE_FLAG_GUIDED_ENABLED;
+  }
   fc_state.type = MAV_TYPE_QUADROTOR;
   fc_state.state = MAV_STATE_BOOT;
   fc_state.system_id = 1;
@@ -99,7 +107,9 @@ void Init() {
                                          crsfStream_Storage, &crsfStreamStruct);
   commRXStream = xStreamBufferCreateStatic(
       COMM_BUFFER_SIZE, 1, commStream_Storage, &commRXStreamStruct);
-  if (crsfStream == NULL || commRXStream == NULL) {
+
+  distQueue = xQueueCreateStatic(6, 12, distQueue_Storage, &distQueueStruct);
+  if (crsfStream == NULL || commRXStream == NULL || distQueue == NULL) {
     Error_Handler();
   }
 
@@ -144,9 +154,27 @@ void Init() {
     Error_Handler();
   }
 
+  TaskStartupHandle = osThreadNew(StartupTask, NULL, &TaskStartup_attributes);
+  if (TaskStartupHandle == NULL) {
+    Error_Handler();
+  }
+
   HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
+
   TIM3->CCR1 = TIM3->CNT + 1000;
 
-  uint8_t buf[30] = "All tasks created";
-  HAL_UART_Transmit(&huart1, buf, sizeof(buf), HAL_MAX_DELAY);
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+  LOG_INFO(0, "All tasks created");
 }

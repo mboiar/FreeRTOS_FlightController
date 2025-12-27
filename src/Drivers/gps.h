@@ -3,14 +3,13 @@
 #include <math.h>
 #include <stdint.h>
 
-
 typedef struct {
-  uint64_t lon;
-  uint64_t lat;
+  int32_t lon;
+  int32_t lat;
   uint64_t time_usec;
   float alt;
-  float speed;
-  float course;
+  float ve;
+  float vn;
   float pdop;
   float hdop;
   float vdop;

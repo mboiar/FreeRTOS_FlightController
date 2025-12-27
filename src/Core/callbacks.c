@@ -75,10 +75,10 @@ void Flash_SPI_TxRxCpltHandler() {
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-// void TIM3_TaskNotifyISR() {
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  // task scheduling
   if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     TIM3tick++;
     // 200 Hz
@@ -88,8 +88,20 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
       xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
                          &xHigherPriorityTaskWoken);
     }
+    // 10 Hz
+    if (TIM3tick % 100 == 0) {
+      xTaskNotifyFromISR(TaskStartupHandle, 0x01, eSetBits,
+                         &xHigherPriorityTaskWoken);
+    }
 
-    TIM3->CCR1 += 1000;
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    TIM3->CCR1 = TIM3->CNT + 1000;
+  } else if (htim->Instance == TIM3 &&
+             htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+    // hcsr04 callback
+    HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_RESET);
+    HAL_TIM_OC_Stop_IT(&htim3, TIM_CHANNEL_2);
+    xTaskNotifyFromISR(TaskStartupHandle, 0x02, eSetBits,
+                       &xHigherPriorityTaskWoken);
   }
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

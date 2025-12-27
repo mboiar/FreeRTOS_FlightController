@@ -24,7 +24,7 @@ void TaskTelemetry(void *argument) {
 
   static uint32_t tick;
 
-  static UBaseType_t watermark[5];
+  static UBaseType_t watermark[7];
 
   for (;;) {
     tick++;
@@ -49,7 +49,9 @@ void TaskTelemetry(void *argument) {
       watermark[2] = uxTaskGetStackHighWaterMark(TaskRadioRXHandle);
       watermark[3] = uxTaskGetStackHighWaterMark(TaskTelemetryHandle);
       watermark[4] = uxTaskGetStackHighWaterMark(TaskUARTLoggingHandle);
-      for (int i = 0; i < 5; i++) {
+      watermark[5] = uxTaskGetStackHighWaterMark(TaskCommRxHandle);
+      watermark[6] = uxTaskGetStackHighWaterMark(TaskStartupHandle);
+      for (int i = 0; i < 7; i++) {
         if (watermark[i] < 50) {
           LOG_WARN(0, "LOW_STACK %d", i);
         }

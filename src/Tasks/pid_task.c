@@ -126,11 +126,11 @@ void set_pwm_out() {
 void write_pwm_vals() {
   if (CTRL_TYPE == CTRL_TYPE_DSHOT) {
     // dshot_data = CRSF_TO_DSHOT(rc_data.ch_data[0]);
-    dshot_data = 69;
-    int res = dshot_write(dshot_data, 0, TIM_CHANNEL_1);
-    res = dshot_write(dshot_data, 0, TIM_CHANNEL_2);
-    res = dshot_write(dshot_data, 0, TIM_CHANNEL_3);
-    res = dshot_write(dshot_data, 0, TIM_CHANNEL_4);
+    dshot_data = 70;
+    int res = dshot_write(dshot_data, 1, TIM_CHANNEL_1);
+    res = dshot_write(dshot_data, 1, TIM_CHANNEL_2);
+    res = dshot_write(dshot_data, 1, TIM_CHANNEL_3);
+    res = dshot_write(dshot_data, 1, TIM_CHANNEL_4);
   } else {
     pwm_set_pulse_us(&htim1, TIM_CHANNEL_1, clamp(motors_pwm.bl, 1000, 2000));
     pwm_set_pulse_us(&htim1, TIM_CHANNEL_2, clamp(motors_pwm.br, 1000, 2000));
@@ -145,7 +145,7 @@ void init_motors() {
     dshot_init(DSHOT300);
     for (int i = 0; i < 1000; i++) {
       dshot_write(0, 0, TIM_CHANNEL_2);
-      vTaskDelay(pdMS_TO_TICKS(1));
+      // vTaskDelay(pdMS_TO_TICKS(1));
     }
   } else {
     pwm_init();

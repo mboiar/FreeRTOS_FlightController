@@ -30,17 +30,13 @@ void hcsr04_reset(hcsr04_sensor_t *sensor) {
 
 void hcsr04_trigger() {
   HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_SET);
-  uint32_t start = TIM3->CNT;
-  uint32_t target = start + 10; // 10 us
-  while ((int32_t)(TIM3->CNT - target) < 0) {
-  }
-  // vTaskDelay(pdMS_TO_TICKS(HCSR04_TRIGGER_PULSE_US)); // ??
-  HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_RESET);
+  TIM3->CCR2 = TIM3->CNT + 100;
+  HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_2);
 }
 
 float duration_to_dist(float dur_us, float temperature) {
   float soundSpeed = (331.4 + (0.606 * temperature));
-  return soundSpeed * dur_us / 10000.0f;
+  return soundSpeed * dur_us / 10000.0f / 2.0f;
 }
 
 static float median5(const float *arr) {
@@ -107,9 +103,13 @@ float filter_dist(const float *buf, float last_val, float alpha, bool *init,
     return res;
   }
   // outlier detection
-  if (fabs(res - last_val) > last_val * outlier_thresh) {
-    res = last_val;
+  if (last_val <= 0 || res <= 0) {
+    return res;
   }
+  // unreliable in this context
+  // else if (fabs(res - last_val) > last_val * outlier_thresh) {
+  //   res = last_val;
+  // }
 
   // smoothing with EMA
   return alpha * res + (1 - alpha) * last_val;
