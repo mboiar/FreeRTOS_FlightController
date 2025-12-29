@@ -38,7 +38,7 @@ void StartupTask(void *argument) {
     if (xQueueReceive(distQueue, &event, pdMS_TO_TICKS(1))) {
       handleDistEvent(&event);
     }
-    if (xTaskNotifyWait(pdFALSE, 0, &notif, 0) == pdTRUE) {
+    if (xTaskNotifyWait(pdFALSE, 0x01, &notif, 0) == pdTRUE) {
       notif &= ~0x01;
       cur_tick = get_time_since_boot_us();
 
@@ -66,7 +66,7 @@ void StartupTask(void *argument) {
       }
       cur_tick = TIM3->CNT;
       hcsr04_trigger();
-      if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE &&
+      if (xTaskNotifyWait(pdFALSE, 0x02, &notif, portMAX_DELAY) == pdTRUE &&
           (notif & 0x02)) {
         notif &= ~0x02;
       }

@@ -180,6 +180,7 @@ void deinit_motors() {
 }
 
 void arm() {
+  LOG_INFO(0, "ARMING");
   if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
     init_motors();
   }
@@ -187,6 +188,7 @@ void arm() {
 }
 
 void disarm() {
+  LOG_INFO(0, "DISARMING");
   if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED)) {
     deinit_motors();
   }
@@ -220,7 +222,7 @@ void TaskFlightLoop(void *argument) {
 
   for (;;) {
     // run with 200 Hz freq
-    if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
+    if (xTaskNotifyWait(pdFALSE, ULONG_MAX, &notif, portMAX_DELAY) == pdTRUE) {
       if (notif & PID_COMPUTE) {
 
         notif &= ~PID_COMPUTE;
@@ -253,7 +255,7 @@ void TaskFlightLoop(void *argument) {
 
           if (arm_cnt == 400) {
             if (fc_state.state == MAV_STATE_STANDBY) {
-              arm();
+              fc_state.state = MAV_STATE_CALIBRATING;
             } else if (fc_state.state == MAV_STATE_ACTIVE) {
               disarm();
             }
@@ -306,7 +308,7 @@ void TaskFlightLoop(void *argument) {
 
           if (arm_cnt == 400) {
             if (fc_state.state == MAV_STATE_STANDBY) {
-              arm();
+              fc_state.state = MAV_STATE_CALIBRATING;
             } else if (fc_state.state == MAV_STATE_ACTIVE) {
               disarm();
             }
@@ -351,6 +353,12 @@ void TaskFlightLoop(void *argument) {
             write_pwm_vals();
           }
         }
+      }
+
+      if (notif & PID_ARM_READY) {
+        notif &= ~PID_ARM_READY;
+
+        arm();
       }
     }
   }

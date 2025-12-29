@@ -96,7 +96,7 @@ void TaskRadioRX(void *argument) {
       if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
         cur_tick = xTaskGetTickCount();
 
-        xTaskNotifyWait(0, 0, &notif, 0);
+        xTaskNotifyWait(0, ULONG_MAX, &notif, 0);
 
         switch (frame.type) {
         case CRSF_TYPE_RC:

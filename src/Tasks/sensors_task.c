@@ -75,13 +75,13 @@ void TaskSensor(void *argument) {
     vTaskSuspendAll();
   }
   if (fc_state.state == MAV_STATE_BOOT) {
-    fc_state.state = MAV_STATE_CALIBRATING;
+    fc_state.state = MAV_STATE_STANDBY;
   }
 
   size_t tick = 0; // 200 Hz
 
   for (;;) {
-    if (xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY) == pdTRUE) {
+    if (xTaskNotifyWait(pdFALSE, ULONG_MAX, &notif, portMAX_DELAY) == pdTRUE) {
       cur_tick = xTaskGetTickCount();
 
       if (notif & SENSOR_CALIBRATION_START) {
@@ -108,22 +108,21 @@ void TaskSensor(void *argument) {
                         &gyro_offset, &mag, &accel_offset);
 
               // need GPS in case of auto
-              if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
-                  (fc_state.mode & MAV_MODE_FLAG_AUTO_ENABLED)) {
-                do {
-                  xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY);
-                  fc_state.home_alt = gps_data.alt;
-                  fc_state.home_lon = gps_data.lon;
-                  fc_state.home_lat = gps_data.lat;
-                } while (!(notif & SENSOR_FUSE_GPS));
-              }
+              // if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
+              //     (fc_state.mode & MAV_MODE_FLAG_AUTO_ENABLED)) {
+              //   do {
+              //     xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY);
+              //     fc_state.home_alt = gps_data.alt;
+              //     fc_state.home_lon = gps_data.lon;
+              //     fc_state.home_lat = gps_data.lat;
+              //   } while (!(notif & SENSOR_FUSE_GPS));
+              // }
               last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
-              fc_state.state = MAV_STATE_STANDBY;
+              xTaskNotify(TaskFlightLoopHandle, PID_ARM_READY, eSetBits);
             }
           }
 
-        } else if ((fc_state.state == MAV_STATE_ACTIVE) ||
-                   (fc_state.state == MAV_STATE_STANDBY)) {
+        } else if ((fc_state.state == MAV_STATE_ACTIVE)) {
           tick_start = xTaskGetTickCount();
           if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
                                 &gyro_offset, &offA, scaleA) != HAL_OK) {
@@ -232,7 +231,7 @@ static void sensors_calibrate() {
         mag.MagY, mag.MagZ, 0, 0, 0, 0, 0xFFFF, 0);
     comm_tx_send(&msg);
     vTaskDelay(pdMS_TO_TICKS(500));
-    xTaskNotifyWait(pdFALSE, 0, &notif, 0);
+    xTaskNotifyWait(pdFALSE, SENSOR_CALIBRATION_STOP, &notif, 0);
     if (notif & SENSOR_CALIBRATION_STOP) {
       notif &= ~SENSOR_CALIBRATION_STOP;
       break;
@@ -241,7 +240,7 @@ static void sensors_calibrate() {
 
   // wait for calibration parameters to arrive
   while (true) {
-    xTaskNotifyWait(pdFALSE, 0, &notif, portMAX_DELAY);
+    xTaskNotifyWait(pdFALSE, SENSOR_LOAD_PARAMS, &notif, portMAX_DELAY);
     if (notif & SENSOR_LOAD_PARAMS) {
       notif &= ~SENSOR_LOAD_PARAMS;
       // TODO: Load into non-volatile memory
@@ -347,7 +346,7 @@ static HAL_StatusTypeDef sensors_init() {
 static uint8_t sensors_calibrate_stationary() {
   static size_t calib_tick;
   calib_tick++;
-  if (calib_tick == 100) {
+  if (calib_tick % 100 == 0) {
     return 1;
   }
   mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,

@@ -59,7 +59,7 @@ void TaskTelemetry(void *argument) {
     }
 
 #ifdef FC_ENABLE_RUNTIME_STATS
-    xTaskNotifyWait(pdFALSE, 0, &notif, 0);
+    xTaskNotifyWait(pdFALSE, ULONG_MAX, &notif, 0);
     if (notif & TELEM_GET_RUNTIME_STATS) {
       notif &= ~TELEM_GET_RUNTIME_STATS;
       vTaskGetRunTimeStats(buf);
