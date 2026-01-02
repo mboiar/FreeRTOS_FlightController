@@ -48,7 +48,7 @@ extern osThreadId_t TaskCommRxHandle;
 extern StreamBufferHandle_t crsfStream;
 extern QueueHandle_t distQueue;
 extern StreamBufferHandle_t commRXStream;
-extern state_t state;
+// extern state_t state;
 extern SemaphoreHandle_t imu_mutex;
 
 // extern uint16_t HCSR04_ECHO_PIN[HCSR04_SENSOR_COUNT];

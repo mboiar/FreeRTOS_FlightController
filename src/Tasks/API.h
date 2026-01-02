@@ -37,4 +37,6 @@ typedef struct {
   uint64_t home_lon;
   uint64_t home_lat;
   float home_alt;
+  uint8_t battery_state;
+  uint16_t battery_voltage;
 } FC_State;

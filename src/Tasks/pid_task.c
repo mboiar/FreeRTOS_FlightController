@@ -58,7 +58,8 @@ void vel_pid_loop(float vel_cmd[3], float dt) {
   clamp(acc_cmd[1], -2, 2);
   clamp(acc_cmd[2], -1, 1);
   sp_rate.throttle = sqrtf(acc_cmd[0] * acc_cmd[0] + acc_cmd[1] * acc_cmd[1] +
-                           acc_cmd[2] * acc_cmd[2]);
+                           acc_cmd[2] * acc_cmd[2]) +
+                     0.4f;
 
   att_sp.roll = atan2f(acc_cmd[1], acc_cmd[2]);
   att_sp.pitch = atan2f(
@@ -206,19 +207,20 @@ void TaskFlightLoop(void *argument) {
   pid_init(&pid_rate.pid_x, 0.1, 0.0, 0, -100, 100);
   pid_init(&pid_rate.pid_y, 0.1, 0.0, 0, -100, 100);
   pid_init(&pid_rate.pid_z, 0.1, 0.0, 0, -100, 100);
-  pid_init(&pid_vel.pid_x, 0.1, 0.0, 0.0, -100, 100);
-  pid_init(&pid_vel.pid_y, 0.1, 0.0, 0.0, -100, 100);
-  pid_init(&pid_vel.pid_z, 0.1, 0.0, 0.0, -100, 100);
-  pid_init(&pid_att.pid_x, 0.1, 0.0, 0.0, -100, 100);
-  pid_init(&pid_att.pid_y, 0.1, 0.0, 0.0, -100, 100);
-  pid_init(&pid_att.pid_z, 0.1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_vel.pid_x, 1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_vel.pid_y, 1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_vel.pid_z, 1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_x, 1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_y, 1, 0.0, 0.0, -100, 100);
+  pid_init(&pid_att.pid_z, 1, 0.0, 0.0, -100, 100);
 
-  static uint32_t last_tick, tick, last_inner_tick;
+  static uint32_t last_tick, tick, last_inner_tick, loop_cnt;
 
   last_tick = get_time_since_boot_us();
   last_inner_tick = get_time_since_boot_us();
 
   arm_cnt = 0;
+  loop_cnt = 0;
 
   for (;;) {
     // run with 200 Hz freq
@@ -227,6 +229,10 @@ void TaskFlightLoop(void *argument) {
 
         notif &= ~PID_COMPUTE;
 
+        if (fc_state.state == MAV_STATE_FLIGHT_TERMINATION) {
+          disarm();
+        }
+
         if (!((fc_state.state & MAV_STATE_ACTIVE) ||
               fc_state.state & MAV_STATE_STANDBY)) {
           continue;
@@ -234,6 +240,7 @@ void TaskFlightLoop(void *argument) {
         tick = get_time_since_boot_us();
         dt = (float)(tick - last_tick) / 1000000.0f;
         last_tick = tick;
+        loop_cnt++;
 
         // get latest sensor data
         // if (imu_mutex != NULL) {
@@ -244,23 +251,23 @@ void TaskFlightLoop(void *argument) {
 
         // inner PID
 
+        if (tick - rc_scaled.ts > 50000) {
+          LOG_ERR(0, "EXPIRED_RC %lu %lu", tick, rc_scaled.ts);
+          // continue;
+        }
+
+        if (arm_cnt == 400) {
+          if (fc_state.state == MAV_STATE_STANDBY) {
+            fc_state.state = MAV_STATE_CALIBRATING;
+          } else if (fc_state.state == MAV_STATE_ACTIVE) {
+            disarm();
+          }
+          arm_cnt = 0;
+        }
+
         switch (fc_state.custom_mode) {
         default:
         case FLIGHT_MODE_ACRO:
-          // check if expired
-          if (tick - rc_scaled.ts > 50000) {
-            // TODO log
-            // continue;
-          }
-
-          if (arm_cnt == 400) {
-            if (fc_state.state == MAV_STATE_STANDBY) {
-              fc_state.state = MAV_STATE_CALIBRATING;
-            } else if (fc_state.state == MAV_STATE_ACTIVE) {
-              disarm();
-            }
-            arm_cnt = 0;
-          }
 
           if (rc_scaled.arm && rc_scaled.throttle == 0) {
             arm_cnt++;
@@ -277,46 +284,63 @@ void TaskFlightLoop(void *argument) {
 
           break;
 
-        case FLIGHT_MODE_GUIDED:
-          // desired velocity -> desired acceleration NED
-          if (notif & PID_SET_TARGET_VELOCITY) {
-            notif &= ~PID_SET_TARGET_VELOCITY;
-            // quat_rotate_vec(vel_body, eskf.state.quat,
-            //                 eskf.state.vel); // world -> body
-            sp_rate.yaw = vel_cmd[3];
-            sp_rate.ts = tick; // todo: timestamp
-            quat_rotate_vec(vel_cmd_ned, eskf.state.quat,
-                            vel_cmd); // body -> world
-            vel_pid_loop(vel_cmd_ned, dt);
+        case FLIGHT_MODE_STABILIZED:
 
+          if (rc_scaled.arm && rc_scaled.throttle == 0) {
+            arm_cnt++;
+            continue;
           } else {
-            // ???
+            arm_cnt = 0;
           }
 
+          att_sp.roll = rc_scaled.roll / 180.0f * M_PI;
+          att_sp.pitch = rc_scaled.pitch / 180.0f * M_PI;
+          sp_rate.yaw = rc_scaled.yaw / 180.0f * M_PI;
+          sp_rate.throttle = rc_scaled.throttle * 0.5;
+          sp_rate.ts = rc_scaled.ts;
+
           // 50 Hz
-          if (tick % 4 == 0) {
+          if (loop_cnt % 4 == 0) {
             // attitude pid
             inner_dt = (float)(tick - last_inner_tick) / 1000000.0f;
             last_inner_tick = tick;
 
             att_pid_loop(inner_dt);
           }
+          break;
+
+        case FLIGHT_MODE_GUIDED:
+          // desired velocity -> desired acceleration NED
+          if (notif & PID_SET_TARGET_VELOCITY) {
+            notif &= ~PID_SET_TARGET_VELOCITY;
+
+            inner_dt = (float)(tick - last_inner_tick) / 1000000.0f;
+            last_inner_tick = tick;
+            // quat_rotate_vec(vel_body, eskf.state.quat,
+            //                 eskf.state.vel); // world -> body
+            sp_rate.yaw = vel_cmd[3];
+            sp_rate.ts = tick; // todo: timestamp
+            quat_rotate_vec(vel_cmd_ned, eskf.state.quat,
+                            vel_cmd); // body -> world
+            vel_pid_loop(vel_cmd_ned, inner_dt);
+
+          } else {
+            if (tick - last_inner_tick > 1000000) {
+              memset(vel_cmd_ned, 0, sizeof(vel_cmd_ned));
+            }
+          }
+
+          // 50 Hz
+          if (loop_cnt % 4 == 0) {
+            // attitude pid
+            att_pid_loop(dt * 4);
+          }
 
           break;
 
         case FLIGHT_MODE_POSHOLD:
 
-          if (arm_cnt == 400) {
-            if (fc_state.state == MAV_STATE_STANDBY) {
-              fc_state.state = MAV_STATE_CALIBRATING;
-            } else if (fc_state.state == MAV_STATE_ACTIVE) {
-              disarm();
-            }
-            arm_cnt = 0;
-          }
-
-          if (rc_scaled.arm && rc_scaled.throttle == 0 &&
-              eskf.state.pos[2] < 0.1f) {
+          if (rc_scaled.arm && rc_scaled.throttle == 0) {
             arm_cnt++;
             continue;
           } else {
@@ -325,15 +349,56 @@ void TaskFlightLoop(void *argument) {
 
           sp_rate.yaw = rc_scaled.yaw / 180.0f * M_PI;
           sp_rate.ts = rc_scaled.ts;
-          vel_cmd_ned[0] = rc_scaled.roll;
-          vel_cmd_ned[1] = rc_scaled.pitch;
-          vel_cmd_ned[2] = rc_scaled.throttle;
 
-          vel_pid_loop(vel_cmd_ned, dt);
+          // 10 Hz
+          if (loop_cnt % 20 == 0) {
+            vel_cmd_ned[0] = rc_scaled.roll;
+            vel_cmd_ned[1] = rc_scaled.pitch;
+            vel_cmd_ned[2] = rc_scaled.throttle;
 
-          if (tick % 4 == 0) {
+            vel_pid_loop(vel_cmd_ned, dt * 20);
+          }
+
+          if (loop_cnt % 4 == 0) {
             // attitude pid
 
+            att_pid_loop(dt * 4);
+          }
+          break;
+
+        case FLIGHT_MODE_LAND_UNSUPPORTED:
+          sp_rate.yaw = rc_scaled.yaw / 180.0f * M_PI;
+          sp_rate.ts = rc_scaled.ts;
+
+          if (arm_cnt == 100) {
+            arm_cnt = 0;
+            disarm();
+          }
+
+          // check if landed
+          if (eskf.state.vel[2] < 0.2f) {
+            arm_cnt++;
+            sp_rate.throttle = 0;
+            continue;
+          } else if (fc_state.sensors_enabled) {
+            // TODO: check GPS
+            // 10 Hz
+            if (loop_cnt % 20 == 0) {
+              vel_cmd_ned[0] = 0;
+              vel_cmd_ned[1] = 0;
+              vel_cmd_ned[2] = -0.5f;
+
+              vel_pid_loop(vel_cmd_ned, dt * 20);
+            }
+          } else {
+            sp_rate.throttle = 0.4f; // slightly below hover throttle
+          }
+          arm_cnt = 0;
+
+          if (loop_cnt % 4 == 0) {
+            // attitude pid
+            att_sp.roll = 0;
+            att_sp.pitch = 0;
             att_pid_loop(dt * 4);
           }
           break;
@@ -344,13 +409,15 @@ void TaskFlightLoop(void *argument) {
           rate_pid_loop();
           set_pwm_out();
 
-          if (PID_DEBUG) {
-            pid_log(tick);
-          }
-
           if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED) &&
               (fc_state.state == MAV_STATE_ACTIVE)) {
             write_pwm_vals();
+          }
+        }
+        if (loop_cnt % 10 == 0) {
+
+          if (PID_DEBUG) {
+            pid_log(tick);
           }
         }
       }
@@ -358,7 +425,11 @@ void TaskFlightLoop(void *argument) {
       if (notif & PID_ARM_READY) {
         notif &= ~PID_ARM_READY;
 
-        arm();
+        // TODO: get battery state from sensor not esc
+        if (fc_state.battery_state == MAV_BATTERY_CHARGE_STATE_OK ||
+            fc_state.battery_state == MAV_BATTERY_CHARGE_STATE_UNDEFINED) {
+          arm();
+        }
       }
     }
   }

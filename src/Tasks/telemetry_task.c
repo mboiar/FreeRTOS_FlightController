@@ -13,6 +13,8 @@ uint32_t get_time_since_boot_us() {
   return __HAL_TIM_GET_COUNTER(&htim5) * 100;
 }
 
+static uint8_t telem_buf[16];
+
 /**
  * @brief Sends telemetry
  * @param argument: Not used
@@ -28,11 +30,52 @@ void TaskTelemetry(void *argument) {
 
   for (;;) {
     tick++;
+
+    // 10 Hz
     if (tick % 1 == 0) {
       if (fc_state.state == MAV_STATE_ACTIVE) {
         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
       }
+
+      switch (fc_state.battery_state) {
+      case MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
+        // battery is faulty: shut down to avoid damage
+
+        LOG_CRIT(0, "BATTERY_UNHEALTHY");
+        fc_state.state = MAV_STATE_POWEROFF;
+        break;
+
+      case MAV_BATTERY_CHARGE_STATE_EMERGENCY:
+        // turn off motors
+        LOG_CRIT(0, "BATTERY_EMERGENCY");
+        fc_state.state = MAV_STATE_FLIGHT_TERMINATION;
+        break;
+
+      case MAV_BATTERY_CHARGE_STATE_CRITICAL:
+        // battery is critically low: begin landing
+        LOG_ERR(0, "BATTERY_CRITICAL");
+        fc_state.custom_mode = FLIGHT_MODE_LAND_UNSUPPORTED;
+        break;
+
+      case MAV_BATTERY_CHARGE_STATE_LOW:
+        // battery is low: warn
+        LOG_WARN(0, "BATTERY_LOW");
+        break;
+
+      case MAV_BATTERY_CHARGE_STATE_OK:
+        break;
+
+      default:
+        break;
+      }
+
+      crsf_pack_battery(telem_buf, fc_state.battery_voltage, 0, 0, 0);
+      if (HAL_UART_Transmit_IT(&huart2, telem_buf, sizeof(telem_buf)) !=
+          HAL_OK) {
+        LOG_ERR(0, "UNABLE_TO_SEND_TELEM");
+      }
     }
+
     if (tick % 10 == 0) {
       mavlink_msg_heartbeat_pack(fc_state.system_id, fc_state.comp_id, &msg,
                                  fc_state.type, fc_state.autopilot,

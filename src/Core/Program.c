@@ -59,7 +59,7 @@ const osThreadAttr_t TaskCommRx_attributes = {
 QueueHandle_t xLogQueue;
 QueueHandle_t distQueue;
 
-state_t state;
+// state_t state;
 StreamBufferHandle_t crsfStream;
 StreamBufferHandle_t commRXStream;
 
@@ -102,6 +102,7 @@ void Init() {
   fc_state.state = MAV_STATE_BOOT;
   fc_state.system_id = 1;
   fc_state.comp_id = MAV_COMP_ID_AUTOPILOT1;
+  fc_state.battery_state = MAV_BATTERY_CHARGE_STATE_UNDEFINED;
 
   crsfStream = xStreamBufferCreateStatic(CRSF_BUFFER_SIZE, 1,
                                          crsfStream_Storage, &crsfStreamStruct);
@@ -113,7 +114,7 @@ void Init() {
     Error_Handler();
   }
 
-  state.sysid = 1;
+  // state.sysid = 1;
 
   xLogQueue = xQueueCreateStatic(LOG_QUEUE_LEN, BUFFER_SIZE, logQueue_Storage,
                                  &logQueueStruct);

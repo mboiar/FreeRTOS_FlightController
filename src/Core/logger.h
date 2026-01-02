@@ -11,10 +11,10 @@
 
 typedef enum {
   FLIGHT_MODE_ACRO,
+  FLIGHT_MODE_STABILIZED,
   FLIGHT_MODE_POSHOLD,
   FLIGHT_MODE_GUIDED,
   FLIGHT_MODE_ALTHOLD_UNSUPPORTED,
-  FLIGHT_MODE_LOITER_UNSUPPORTED,
   FLIGHT_MODE_AUTO_UNSUPPORTED,
   FLIGHT_MODE_RTL_UNSUPPORTED,
   FLIGHT_MODE_LAND_UNSUPPORTED,
@@ -22,13 +22,13 @@ typedef enum {
 
 typedef enum { LOCKED, MANUAL, GUIDED } SYS_MODE;
 
-typedef struct {
-  uint8_t sysid;
-  mavlink_control_system_state_t ctrl_sys_state;
-  FLIGHT_MODE custom_mode;
-  SYS_MODE sys_mode;
-  uint8_t nav_mode;
-} state_t;
+// typedef struct {
+//   uint8_t sysid;
+//   mavlink_control_system_state_t ctrl_sys_state;
+//   FLIGHT_MODE custom_mode;
+//   SYS_MODE sys_mode;
+//   uint8_t nav_mode;
+// } state_t;
 
 extern QueueHandle_t xLogQueue;
 

@@ -92,6 +92,16 @@ void TaskSensor(void *argument) {
         tick++;
         if (fc_state.state == MAV_STATE_CALIBRATING) {
           if (tick % 2 == 0) { // 100 Hz
+
+            if (notif & SENSOR_FUSE_GPS) {
+              notif &= ~SENSOR_FUSE_GPS;
+              // TODO set health
+
+              fc_state.home_lat = gps_data.lat;
+              fc_state.home_lon = gps_data.lon;
+              fc_state.home_alt = gps_data.alt;
+            }
+
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
               if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
@@ -131,8 +141,7 @@ void TaskSensor(void *argument) {
           dt = (__HAL_TIM_GET_COUNTER(&htim5) * 100 - last_tick) /
                1000000.0f; // s
 
-          if (eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro,
-                           (float)((dt > 0.0f) ? dt : 1.0f / 1000.0f)) < 0) {
+          if (eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro, dt) < 0) {
             fc_state.state = MAV_STATE_CRITICAL;
           }
 
@@ -170,11 +179,18 @@ void TaskSensor(void *argument) {
             }
 
             if (notif & SENSOR_FUSE_GPS) {
+              notif &= ~SENSOR_FUSE_GPS;
               // TODO set health
+
+              // if (fc_state.home_lat == 0 && fc_state.home_lon == 0) {
+              //   fc_state.home_lat = gps_data.lat;
+              //   fc_state.home_lon = gps_data.lon;
+              //   fc_state.home_alt = gps_data.alt;
+              // }
               if (eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
                                   fc_state.home_lat, fc_state.home_alt, 0.1,
                                   0.1, 0.1) != 0) {
-                LOG_CRIT(0, "INVALID_GPS_UPDATE");
+                LOG_ERR(0, "INVALID_GPS_UPDATE");
               }
             }
           }
@@ -189,7 +205,8 @@ void TaskSensor(void *argument) {
                 1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
                 MAV_ESTIMATOR_TYPE_AUTOPILOT, eskf.state.pos[0],
                 eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
-                eskf.state.vel[1], eskf.state.vel[2], 0, 0, 0, PVcov);
+                eskf.state.vel[1], eskf.state.vel[2], acc_glob[0], acc_glob[1],
+                acc_glob[2], PVcov);
             comm_tx_send(&msg);
           }
 
@@ -347,6 +364,8 @@ static uint8_t sensors_calibrate_stationary() {
   static size_t calib_tick;
   calib_tick++;
   if (calib_tick % 100 == 0) {
+    LOG_INFO(0, "BIAS %.4f %.4f %.4f %.4f", gyro_offset.gyro_x,
+             gyro_offset.gyro_y, gyro_offset.gyro_z, p_ref);
     return 1;
   }
   mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
@@ -366,5 +385,6 @@ static uint8_t sensors_calibrate_stationary() {
                          tmp_data.accel.accel_y / calib_tick;
   accel_offset.accel_z = accel_offset.accel_z * (calib_tick - 1) / calib_tick +
                          tmp_data.accel.accel_z / calib_tick;
+
   return 0;
 }

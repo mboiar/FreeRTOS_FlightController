@@ -48,6 +48,8 @@ typedef struct {
   float sigma_ww;
 } eskf_t;
 
+extern float acc_glob[3];
+
 /**
  * @brief Initialize Error State Kalman Filter.
  * @param eskf `eskf_t` instance being initialized

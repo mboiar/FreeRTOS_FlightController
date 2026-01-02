@@ -2,7 +2,7 @@
 
 #define TASK_RADIORX_STACK_SIZE 0x600U
 #define TASK_LOGGING_STACK_SIZE 0x800U
-#define TASK_TELEM_STACK_SIZE 0x300U
+#define TASK_TELEM_STACK_SIZE 0x500U
 #define TASK_SENSOR_STACK_SIZE 0x800U
 #define TASK_FLIGHTLOOP_STACK_SIZE 0x600U
 #define TASK_FAILSAFE_STACK_SIZE 0U
@@ -32,6 +32,7 @@
 #define RC_MAP_CH_THROTTLE 2
 #define RC_MAP_CH_MODE 6
 #define RC_MAP_CH_ARM 8
+#define RC_MAP_CH_MODE_CH_REQ 4
 
 #define RC_ANGLE_MAX 30  // deg
 #define RC_ANGLE_MIN -30 // deg
@@ -50,15 +51,17 @@
 #define HCSR04_TRIG_PIN GPIO_PIN_12
 #define HCSR04_BUFFER_LEN 3
 
-#define ESKF_SAN 0.02f  // m/s^2
-#define ESKF_SWN 0.004f // rad/s
-#define ESKF_SAW 5e-2f  // m/s^2/sqrtHz
-#define ESKF_SWW 5e-4f  // rad/s/sqrtHz
-#define EKSF_SMAG 0.01  // ?
-#define EKSF_SBARO 0.01 // m ?
+#define ESKF_SAN 0.02f     // m/s^2
+#define ESKF_SWN 0.004f    // rad/s
+#define ESKF_SAW 5e-2f     // m/s^2/sqrtHz
+#define ESKF_SWW 5e-4f     // rad/s/sqrtHz
+#define EKSF_SMAG 0.01     // ?
+#define EKSF_SBARO 0.01    // m ?
+#define ESKF_SGPS_VEL 0.01 // m/s
+#define ESKF_SGPS_POS 0.1  // m
 
 #define ENABLE_RUNTIME_STATS 1
-#define PID_DEBUG 0
+#define PID_DEBUG 1
 #define RADIO_DEBUG 0
 #define ENABLE_HIL 1
 #define ENABLE_GUIDED 1

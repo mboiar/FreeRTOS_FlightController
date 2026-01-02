@@ -83,15 +83,21 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
     TIM3tick++;
     // 200 Hz
     if (TIM3tick % 5 == 0) {
-      xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
-      xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
+      if (TaskSensorHandle != NULL) {
+        xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
+                           &xHigherPriorityTaskWoken);
+      }
+      if (TaskFlightLoopHandle != NULL) {
+        xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
+                           &xHigherPriorityTaskWoken);
+      }
     }
     // 10 Hz
     if (TIM3tick % 100 == 0) {
-      xTaskNotifyFromISR(TaskStartupHandle, 0x01, eSetBits,
-                         &xHigherPriorityTaskWoken);
+      if (TaskStartupHandle != NULL) {
+        xTaskNotifyFromISR(TaskStartupHandle, 0x01, eSetBits,
+                           &xHigherPriorityTaskWoken);
+      }
     }
 
     TIM3->CCR1 = TIM3->CNT + 1000;

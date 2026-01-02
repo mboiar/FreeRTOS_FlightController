@@ -133,6 +133,22 @@ static void handleSetPositionMsg(const mavlink_message_t *msg) {
   xTaskNotify(TaskFlightLoopHandle, PID_SET_TARGET_VELOCITY, eSetBits);
 }
 
+static void handleBatteryStatusMsg(const mavlink_message_t *msg) {
+  mavlink_battery_status_t mav_battery_status;
+  static uint8_t last_state, state_cnt = 0;
+  mavlink_msg_battery_status_decode(msg, &mav_battery_status);
+  if (mav_battery_status.charge_state == last_state) {
+    state_cnt++;
+  } else {
+    state_cnt = 0;
+  }
+  if (state_cnt == 5) {
+    fc_state.battery_state = mav_battery_status.charge_state;
+  }
+  last_state = mav_battery_status.charge_state;
+  fc_state.battery_voltage = mav_battery_status.voltages[0];
+}
+
 /**
  * @brief Receive messages from serial port
  * @param argument: Not used
@@ -165,6 +181,9 @@ void TaskCommRx(void *argument) {
           break;
         case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
           handleSetPositionMsg(&msg);
+          break;
+        case MAVLINK_MSG_ID_BATTERY_STATUS:
+          handleBatteryStatusMsg(&msg);
         }
       }
     }

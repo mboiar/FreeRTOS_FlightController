@@ -98,3 +98,29 @@ void radio_unpack_rc(crsf_rc_t *rc_data, const uint8_t *rc_data_raw) {
     bits_len -= 11;
   }
 }
+
+void crsf_pack_battery(uint8_t frame[16], uint16_t voltage_mv,
+                       uint16_t current_ma, uint16_t capacity_mah,
+                       uint8_t remaining_percent) {
+  uint8_t idx = 0;
+
+  frame[idx++] = CRSF_SYNC_BYTE;
+
+  // LEN = type + payload + crc = 1 + 7 + 1 = 9
+  frame[idx++] = 9;
+
+  frame[idx++] = CRSF_TYPE_BATTERY;
+
+  frame[idx++] = voltage_mv >> 8;
+  frame[idx++] = voltage_mv & 0xFF;
+
+  frame[idx++] = current_ma >> 8;
+  frame[idx++] = current_ma & 0xFF;
+
+  frame[idx++] = capacity_mah >> 8;
+  frame[idx++] = capacity_mah & 0xFF;
+
+  frame[idx++] = remaining_percent;
+
+  frame[idx++] = crc8(&frame[2], 1 + 7);
+}

@@ -13,30 +13,35 @@
   (((x - RC_VAL_MID) * range) / RC_RANGE + mid)
 
 void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
+  uint8_t mode_change_req = 0;
+
   rc_scaled->ts = get_time_since_boot_us();
   rc_scaled->mode = (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL8_MIN) /
                               (RC_RANGE8 / 2));
   rc_scaled->arm =
       (uint8_t)((raw_rc->ch_data[RC_MAP_CH_ARM] - RC_VAL8_MIN) / (RC_RANGE8));
-  switch (rc_scaled->mode) {
-  case FLIGHT_MODE_ACRO:
-    fc_state.custom_mode = FLIGHT_MODE_ACRO;
-    rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
-                                    RC_VEL_RANGE, RC_VEL_MID);
-    rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
-                                     RC_VEL_RANGE, RC_VEL_MID);
-    rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
-                                      RC_VEL_RANGE, RC_VEL_MID);
-    rc_scaled->throttle =
-        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
-    break;
-  case FLIGHT_MODE_POSHOLD:
-    // check if mode allowed: need gps
-    if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
-      LOG_ERR(0, "NEED_GPS_FOR_POSHOLD");
-      break;
+  mode_change_req =
+      (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE_CH_REQ] - RC_VAL8_MIN) /
+                (RC_RANGE8));
+
+  if (mode_change_req && (rc_scaled->mode != fc_state.custom_mode)) {
+    if (rc_scaled->mode == FLIGHT_MODE_POSHOLD ||
+        rc_scaled->mode == FLIGHT_MODE_GUIDED) {
+      // check if mode allowed: need gps
+      if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
+        LOG_ERR(0, "NEED_GPS_FOR_POSHOLD");
+      } else {
+        LOG_INFO(0, "SETTING_MODE %d", rc_scaled->mode);
+        fc_state.custom_mode = rc_scaled->mode;
+      }
+    } else {
+      LOG_INFO(0, "SETTING_MODE %d", rc_scaled->mode);
+      fc_state.custom_mode = rc_scaled->mode;
     }
-    fc_state.custom_mode = FLIGHT_MODE_POSHOLD;
+  }
+
+  switch (fc_state.custom_mode) {
+  case FLIGHT_MODE_ACRO:
     rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
                                     RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
@@ -46,16 +51,36 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
     rc_scaled->throttle =
         CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
     break;
+
+  case FLIGHT_MODE_STABILIZED:
+    rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
+                                    RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
+                                     RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
+                                      RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->throttle =
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
+    break;
+    break;
+
+  case FLIGHT_MODE_POSHOLD:
+
+    rc_scaled->yaw = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_YAW],
+                                    RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->roll = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_ROLL],
+                                     RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
+                                      RC_VEL_RANGE, RC_VEL_MID);
+    rc_scaled->throttle =
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
+    break;
+
   case FLIGHT_MODE_GUIDED:
 
-    // check if mode allowed: need gps
-    if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
-      LOG_ERR(0, "NEED_GPS_FOR_GUILDED");
-      break;
-    }
-    fc_state.custom_mode = FLIGHT_MODE_GUIDED;
     break;
   default:
+
     LOG_ERR(0, "RADIO_MODE_UNSUPPORTED %d", rc_scaled->mode);
     break;
   }

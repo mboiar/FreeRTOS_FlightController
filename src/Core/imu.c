@@ -8,6 +8,7 @@
 #include <memory.h>
 #include <stdint.h>
 
+#include "Config.h"
 #include "logger.h"
 #include "quat_utils.h"
 
@@ -21,7 +22,7 @@
 #define MAG_UPDATE_METHOD 0
 
 #define m 1
-#define m3 3
+#define m3 5
 
 static inline void mat_set3x3(arm_matrix_instance_f32 *M, uint16_t r0,
                               uint16_t c0, const float mat[9]) {
@@ -312,7 +313,7 @@ static float Ft_data[15 * 15], F_data[15 * 15], Q_data[15 * 15], V_data[m * m],
 static float H_data[m * 15], Ht_data[15 * m], K_data[15 * m], HPH_data[m * m];
 static float H_data3[m3 * 15], Ht_data3[15 * m3], K_data3[15 * m3],
     HPH_data3[m3 * m3], P_data[15 * 15];
-static float acc_glob[3];                    // acceleration in global frame
+float acc_glob[3];                           // acceleration in global frame
 static float acc_body[3];                    // acceleration in body frame
 static float gyro_body[3], gyro_body_int[3]; // angular velocity in body frame
 static float gyro_quat[4];
@@ -339,12 +340,13 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   gyro_body[2] = gyro_m->gyro_z;
 
   linv3(acc_body, acc_body, eskf->state.acc_b, 9.81f, -1);
-  linv3(gyro_body_int, gyro_body, eskf->state.gyro_b, dt,
-        -dt); // substract bias
+  linv3(gyro_body_int, gyro_body, eskf->state.gyro_b, 2 * dt,
+        -2 * dt); // substract bias
   // quat_inv(quat_body_to_ned, eskf->state.quat);
   // rot_to_quat(gyro_quat, gyro_body_int);
   euler_to_quat(gyro_quat, gyro_body_int[0], gyro_body_int[1],
                 gyro_body_int[2]);
+  quat_norm(gyro_quat);
   quat_mul(eskf->state.quat, eskf->state.quat, gyro_quat);
   quat_norm(eskf->state.quat);
   quat_rotate_vec(acc_glob, eskf->state.quat, acc_body); // body -> world
@@ -402,8 +404,11 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
     if (!isfinite(P_data[i * P.numCols + i])) {
       LOG_ERR(0, "ESKF_COV_NAN at %d", i * P.numCols + i);
 
-      // Reset covariance to still be able to receive updates
-      memset(P_data, 0, sizeof(P_data));
+      // Edgecase: reset position covariance to avoid explosion
+      memset(P_data, 0, sizeof(float) * 15 * 6);
+      for (int i = 6; i < 15; i++) {
+        memset(P_data + i * 15, 0, sizeof(float) * 15);
+      }
       return 0;
     }
     if (P_data[i * P.numCols + i] < 0) {
@@ -524,7 +529,7 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
     quat_rotate_vec(mag_meas, quat_rot, mag_meas);
     yaw = atan2f(mag_meas[1], mag_meas[0]) + MAG_DECL;
 
-    eskf->dx[8] = state_yaw - yaw;
+    eskf->dx[8] = yaw - state_yaw;
     memset(H_data, 0, sizeof(H_data));
     H_data[8] = 1;
   } else {
@@ -627,25 +632,31 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
 int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
                     int32_t home_lat, float home_alt, float hacc, float vacc,
                     float sacc) {
-  float pos_diff[3];
-  if (home_lat != 0) {
+  float posvel_diff[5];
+  if (home_lat != 0 && home_lon != 0) {
     lla_to_ned(data->lat, data->lon, data->alt, home_lat, home_lon, home_alt,
-               pos_diff);
+               posvel_diff);
   } else {
     return -1;
   }
+  posvel_diff[3] = data->vn - eskf->state.vel[0];
+  posvel_diff[4] = data->ve - eskf->state.vel[1];
 
   // compute kalman gain
   memset(H_data3, 0, sizeof(H_data));
   H_data3[0] = 1;
-  H_data3[m * 1 + 1] = 1;
-  H_data3[m * 2 + 2] = 1;
+  H_data3[15 * 1 + 1] = 1;
+  H_data3[15 * 2 + 2] = 1;
+  H_data3[15 * 3 + 3] = 1;
+  H_data3[15 * 4 + 4] = 1;
 
   // measurement error covariance
   memset(V3_data, 0, sizeof(V3_data));
-  V3_data[m3 * 0 + 2] = data->hdop;
-  V3_data[m3 * 1 + 2] = data->hdop;
-  V3_data[m3 * 2 + 2] = data->vdop;
+  V3_data[m3 * 0 + 0] = ESKF_SGPS_POS;
+  V3_data[m3 * 1 + 1] = ESKF_SGPS_POS;
+  V3_data[m3 * 2 + 2] = ESKF_SGPS_POS;
+  V3_data[m3 * 3 + 3] = ESKF_SGPS_VEL;
+  V3_data[m3 * 4 + 4] = ESKF_SGPS_VEL;
 
   // K = P*Ht*(H*P*Ht+V)^-1
   status = arm_mat_trans_f32(&H3, &Ht3);       // = 15*m
@@ -662,7 +673,7 @@ int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
   status = arm_mat_mult_f32(&P, &Ht3, &K3);      // = 15 * m
 
   // compute error state change
-  arm_mat_vec_mult_f32(&K3, pos_diff, eskf->dx);
+  arm_mat_vec_mult_f32(&K3, posvel_diff, eskf->dx);
 
   // covariance update
   // symmetric form K(HPH.T+V)K.T
@@ -686,7 +697,7 @@ int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
 }
 
 int eskf_update_baro(eskf_t *eskf, float alt, float cov) {
-  float alt_v[1] = {alt - eskf->state.pos[2]};
+  float alt_v[1] = {-alt - eskf->state.pos[2]};
 
   // compute kalman gain
   memset(H_data, 0, sizeof(H_data));

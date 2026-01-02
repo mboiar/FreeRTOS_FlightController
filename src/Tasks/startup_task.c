@@ -138,7 +138,9 @@ void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin) {
     ev.is_rising = level;
     ev.ts = get_time_since_boot_us();
     ev.sensor_id = i;
-    xQueueSendFromISR(distQueue, &ev, xHigherPriorityTaskWoken);
+    if (distQueue != NULL) {
+      xQueueSendFromISR(distQueue, &ev, &xHigherPriorityTaskWoken);
+    }
   }
 
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
