@@ -248,7 +248,7 @@ static void sensors_calibrate() {
         mag.MagY, mag.MagZ, 0, 0, 0, 0, 0xFFFF, 0);
     comm_tx_send(&msg);
     vTaskDelay(pdMS_TO_TICKS(500));
-    xTaskNotifyWait(pdFALSE, SENSOR_CALIBRATION_STOP, &notif, 0);
+    // xTaskNotifyWait(pdFALSE, SENSOR_CALIBRATION_STOP, &notif, 0);
     if (notif & SENSOR_CALIBRATION_STOP) {
       notif &= ~SENSOR_CALIBRATION_STOP;
       break;
@@ -257,7 +257,7 @@ static void sensors_calibrate() {
 
   // wait for calibration parameters to arrive
   while (true) {
-    xTaskNotifyWait(pdFALSE, SENSOR_LOAD_PARAMS, &notif, portMAX_DELAY);
+    // xTaskNotifyWait(pdFALSE, SENSOR_LOAD_PARAMS, &notif, portMAX_DELAY);
     if (notif & SENSOR_LOAD_PARAMS) {
       notif &= ~SENSOR_LOAD_PARAMS;
       // TODO: Load into non-volatile memory
