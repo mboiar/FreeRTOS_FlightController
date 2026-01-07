@@ -22,8 +22,8 @@ const BMP_CONFIG_PARAMS BMP280_CONFIG_DEFAULT = {.filter_coef = 4,  // x16
 
 const BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
     .mode = BMP_NORMAL,
-    .temp_oversampling = 1,     // x1
-    .pressure_oversampling = 4, // x8
+    .temp_oversampling = 2,    // 1,     // x1
+    .pressure_oversampling = 5 // 4, // x8
 };
 
 static float mpu_temp;
@@ -61,6 +61,9 @@ static float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
 
 static float PVcov[21], Qcov[9];
 
+static bool home_set;
+static float pm[5];
+
 /**
  * @brief Task to handle sensor operations
  * @param argument: Not used
@@ -91,16 +94,17 @@ void TaskSensor(void *argument) {
         notif &= ~SENSOR_MEASURE;
         tick++;
         if (fc_state.state == MAV_STATE_CALIBRATING) {
+          if (notif & SENSOR_FUSE_GPS) {
+            notif &= ~SENSOR_FUSE_GPS;
+            // TODO set health
+
+            fc_state.home_lat = gps_data.lat;
+            fc_state.home_lon = gps_data.lon;
+            fc_state.home_alt = -gps_data.alt;
+            home_set = true;
+          }
+
           if (tick % 2 == 0) { // 100 Hz
-
-            if (notif & SENSOR_FUSE_GPS) {
-              notif &= ~SENSOR_FUSE_GPS;
-              // TODO set health
-
-              fc_state.home_lat = gps_data.lat;
-              fc_state.home_lon = gps_data.lon;
-              fc_state.home_alt = gps_data.alt;
-            }
 
             if (sensors_calibrate_stationary()) {
               // TODO: check if values make sense
@@ -108,14 +112,14 @@ void TaskSensor(void *argument) {
                                     &gyro_offset, &offA, scaleA) != HAL_OK) {
                 // TODO: handle error
               }
-              if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) !=
-                  HAL_OK) {
+              if (qmc5883_read_data(&mag) != HAL_OK) {
                 // TODO Handle error
               }
-              tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+              // tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
 
               eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
-                        &gyro_offset, &mag, &accel_offset);
+                        &gyro_offset, &mag, &accel_offset, magcal_offset,
+                        magcal_mat);
 
               // need GPS in case of auto
               // if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
@@ -148,6 +152,20 @@ void TaskSensor(void *argument) {
           last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100;
 
           tick_end = xTaskGetTickCount();
+
+          if (notif & SENSOR_FUSE_GPS) {
+            notif &= ~SENSOR_FUSE_GPS;
+            // TODO set health
+
+            LOG_INFO(0, "GPS_UPDATE");
+
+            if (eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
+                                fc_state.home_lat, fc_state.home_alt, 0.1, 0.1,
+                                0.1, pm) != 0) {
+              LOG_ERR(0, "INVALID_GPS_UPDATE");
+            }
+          }
+
           // msglen = mavlink_msg_param_value_pack(
           //     1, MAV_COMP_ID_AUTOPILOT1, &msg, " EKF_EXEC_TIME ",
           //     (float)(tick_end - tick_start), 0, 1, 0);
@@ -159,40 +177,25 @@ void TaskSensor(void *argument) {
             }
             tmp_data.alt =
                 bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
-            if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) != HAL_OK) {
+            if (qmc5883_read_data(&mag) != HAL_OK) {
               // TODO Handle error
             }
-            tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+            // tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
+
+            if (eskf_update_yaw(&eskf, &mag, sigma_mag, &tmp_data.heading,
+                                magcal_offset, magcal_mat) < 0 ||
+                eskf_update_baro(&eskf, tmp_data.alt, sigma_baro) < 0) {
+              // TODO disable auto, revert to manual rc
+            }
 
             msglen = mavlink_msg_highres_imu_pack(
                 1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
                 tmp_data.accel.accel_x, tmp_data.accel.accel_y,
                 tmp_data.accel.accel_z, tmp_data.gyro.gyro_x,
                 tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_z, mag.MagX, mag.MagY,
-                mag.MagZ, bmp_pressure, bmp_pressure - p_ref, tmp_data.alt,
-                tmp_data.bmp_temp, 0xFFFF, 0);
+                mag.MagZ, tmp_data.heading, pm[4], tmp_data.alt, pm[5], 0xFFFF,
+                0);
             comm_tx_send(&msg);
-
-            if (eskf_update_yaw(&eskf, &mag, sigma_mag) < 0 ||
-                eskf_update_baro(&eskf, tmp_data.alt, sigma_baro) < 0) {
-              // TODO disable auto, revert to manual rc
-            }
-
-            if (notif & SENSOR_FUSE_GPS) {
-              notif &= ~SENSOR_FUSE_GPS;
-              // TODO set health
-
-              // if (fc_state.home_lat == 0 && fc_state.home_lon == 0) {
-              //   fc_state.home_lat = gps_data.lat;
-              //   fc_state.home_lon = gps_data.lon;
-              //   fc_state.home_alt = gps_data.alt;
-              // }
-              if (eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
-                                  fc_state.home_lat, fc_state.home_alt, 0.1,
-                                  0.1, 0.1) != 0) {
-                LOG_ERR(0, "INVALID_GPS_UPDATE");
-              }
-            }
           }
           if (tick % 20 == 0) {
             eskf_get_cov_posvel(&eskf, PVcov);
@@ -237,9 +240,9 @@ static void sensors_calibrate() {
                           &offA, scaleA) != HAL_OK) {
       // TODO handle error
     }
-    if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) != HAL_OK) {
-      // TODO handle error
-    }
+    // if (qmc5883_read_data(&mag, magcal_offset, magcal_mat) != HAL_OK) {
+    //   // TODO handle error
+    // }
 
     cur_tick = xTaskGetTickCount();
     msglen = mavlink_msg_highres_imu_pack(
@@ -296,12 +299,12 @@ static HAL_StatusTypeDef sensors_init() {
   offG.gyro_x = 0;
   offG.gyro_y = 0;
   offG.gyro_z = 0;
-  offA.accel_x = 0.048761f;
-  offA.accel_y = 0.003296f;
-  offA.accel_z = -0.06665f;
-  scaleA[0] = 1.003368f; // 0.99664f;
-  scaleA[1] = 1.012108f; // 0.98804f;
-  scaleA[2] = 0.992729f; // 1.00732f;
+  offA.accel_y = -0.00505; // 0.048761f;
+  offA.accel_x = 0.04695;  // 0.003296f;
+  offA.accel_z = -0.0774;  //-0.06665f;
+  scaleA[1] = 1.00306;     // 1.003368f; // 0.99664f;
+  scaleA[0] = 1.00306;     // 1.012108f; // 0.98804f;
+  scaleA[2] = 0.98629;     // 0.992729f; // 1.00732f;
 
   // initialize mag offsets
   for (size_t i = 0; i < 3; i++) {
@@ -314,19 +317,19 @@ static HAL_StatusTypeDef sensors_init() {
     }
   }
 
-  magcal_offset[0] = -0.219773f;
-  magcal_offset[1] = -0.048452f;
-  magcal_offset[2] = -0.356323f;
+  magcal_offset[0] = -0.0463f;
+  magcal_offset[1] = -0.17096f;
+  magcal_offset[2] = -0.07806f;
 
-  magcal_mat[0][0] = -0.671190f;
-  magcal_mat[0][1] = 0.007412f;
-  magcal_mat[0][2] = -0.026167f;
-  magcal_mat[1][0] = -0.087054f;
-  magcal_mat[1][1] = 0.1715029f;
-  magcal_mat[1][2] = -2.1844196f;
-  magcal_mat[2][0] = 0.02851924f;
-  magcal_mat[2][1] = 3.5780598f;
-  magcal_mat[2][2] = 0.28205676f;
+  magcal_mat[0][0] = 0.98162718f;
+  magcal_mat[0][1] = -0.01994497f;
+  magcal_mat[0][2] = -0.18976372f;
+  magcal_mat[1][0] = 0.0f;
+  magcal_mat[1][1] = 0.9945219f;
+  magcal_mat[1][2] = -0.10452846f;
+  magcal_mat[2][0] = 0.190809f;
+  magcal_mat[2][1] = 0.10260798f;
+  magcal_mat[2][2] = 0.97624973f;
 
   HAL_StatusTypeDef bmp_status;
   bmp_status =
@@ -363,9 +366,10 @@ static HAL_StatusTypeDef sensors_init() {
 static uint8_t sensors_calibrate_stationary() {
   static size_t calib_tick;
   calib_tick++;
-  if (calib_tick % 100 == 0) {
+  if (calib_tick % 100 == 0 && home_set) {
     LOG_INFO(0, "BIAS %.4f %.4f %.4f %.4f", gyro_offset.gyro_x,
              gyro_offset.gyro_y, gyro_offset.gyro_z, p_ref);
+    home_set = false;
     return 1;
   }
   mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
