@@ -32,6 +32,7 @@
 #define RC_MAP_CH_THROTTLE 2
 #define RC_MAP_CH_MODE 6
 #define RC_MAP_CH_ARM 8
+#define RC_MAP_CH_MODE1 5
 #define RC_MAP_CH_MODE_CH_REQ 4
 
 #define RC_ANGLE_MAX 30  // deg
@@ -52,13 +53,13 @@
 #define HCSR04_BUFFER_LEN 3
 
 #define ESKF_SAN 0.02f     // m/s^2
-#define ESKF_SWN 0.004f    // rad/s
-#define ESKF_SAW 5e-2f     // m/s^2/sqrtHz
-#define ESKF_SWW 5e-4f     // rad/s/sqrtHz
-#define EKSF_SMAG 0.01     // ?
-#define EKSF_SBARO 0.01    // m ?
-#define ESKF_SGPS_VEL 0.01 // m/s
-#define ESKF_SGPS_POS 0.1  // m
+#define ESKF_SWN 0.002f    // rad/s
+#define ESKF_SAW 0.02f     // m/s^2/sqrtHz
+#define ESKF_SWW 0.00001f  // rad/s/sqrtHz
+#define EKSF_SMAG 0.05     // ?
+#define EKSF_SBARO 0.1     // m ?
+#define ESKF_SGPS_VEL 0.05 // m/s
+#define ESKF_SGPS_POS 2.5  // m
 
 #define ENABLE_RUNTIME_STATS 1
 #define PID_DEBUG 1

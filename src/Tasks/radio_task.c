@@ -16,8 +16,11 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
   uint8_t mode_change_req = 0;
 
   rc_scaled->ts = get_time_since_boot_us();
-  rc_scaled->mode = (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL8_MIN) /
-                              (RC_RANGE8 / 2));
+  rc_scaled->mode =
+      (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE] - RC_VAL8_MIN) /
+                (RC_RANGE8 / 2)) +
+      3 * (uint8_t)((raw_rc->ch_data[RC_MAP_CH_MODE1] - RC_VAL8_MIN) /
+                    (RC_RANGE8 / 2));
   rc_scaled->arm =
       (uint8_t)((raw_rc->ch_data[RC_MAP_CH_ARM] - RC_VAL8_MIN) / (RC_RANGE8));
   mode_change_req =
