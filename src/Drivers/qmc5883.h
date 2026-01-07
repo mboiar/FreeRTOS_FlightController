@@ -81,8 +81,7 @@ HAL_StatusTypeDef qmc5883_heartbeat();
 
 HAL_StatusTypeDef qmc5883_set_ctrl(uint8_t ctrl);
 
-HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag, float offv[3],
-                                    float offM[3][3]);
+HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag);
 
 HAL_StatusTypeDef qmc5883_set_config(uint8_t cfg);
 

@@ -6,3 +6,5 @@
 
 // Rotate vector by a quaternion.
 void quat_rotate_vec(float dst[3], const float quat[4], const float vec[3]);
+
+float clamp(float val, float min, float max);

@@ -24,8 +24,7 @@ HAL_StatusTypeDef qmc5883_read_reg_burst(uint8_t reg, uint16_t data_size,
                           I2C_MEMADD_SIZE_8BIT, value, data_size, TIMEOUT);
 }
 
-HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag, float offv[3],
-                                    float offM[3][3]) {
+HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag) {
   uint8_t rx_data[6] = {0};
   qmc5883_raw_t mag_val;
   HAL_StatusTypeDef status =
@@ -38,15 +37,15 @@ HAL_StatusTypeDef qmc5883_read_data(mag3d_t *mag, float offv[3],
     mag_val.MagY = (rx_data[3] << 8) | rx_data[2]; // local Y data
     mag_val.MagZ = (rx_data[5] << 8) | rx_data[4]; // local Z data
 
-    mag->MagX = qmc5883_data_convert(mag_val.MagX) - offv[0];
-    mag->MagY = qmc5883_data_convert(mag_val.MagY) - offv[1];
-    mag->MagZ = qmc5883_data_convert(mag_val.MagZ) - offv[2];
-    mag->MagX = offM[0][0] * mag->MagX + offM[0][1] * mag->MagY +
-                offM[0][2] * mag->MagZ;
-    mag->MagY = offM[1][0] * mag->MagX + offM[1][1] * mag->MagY +
-                offM[1][2] * mag->MagZ;
-    mag->MagZ = offM[2][0] * mag->MagX + offM[2][1] * mag->MagY +
-                offM[2][2] * mag->MagZ;
+    mag->MagX = qmc5883_data_convert(mag_val.MagX); // - offv[0];
+    mag->MagY = qmc5883_data_convert(mag_val.MagY); // - offv[1];
+    mag->MagZ = qmc5883_data_convert(mag_val.MagZ); // - offv[2];
+    // mag->MagX = offM[0][0] * mag->MagX + offM[0][1] * mag->MagY +
+    //             offM[0][2] * mag->MagZ;
+    // mag->MagY = offM[1][0] * mag->MagX + offM[1][1] * mag->MagY +
+    //             offM[1][2] * mag->MagZ;
+    // mag->MagZ = offM[2][0] * mag->MagX + offM[2][1] * mag->MagY +
+    //             offM[2][2] * mag->MagZ;
   }
 
   return status;
