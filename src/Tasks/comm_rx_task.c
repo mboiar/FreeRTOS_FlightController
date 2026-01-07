@@ -110,13 +110,15 @@ static void handleMsgLong(const mavlink_message_t *msg) {
 static void handleGPSMsg(const mavlink_message_t *msg) {
   mavlink_gps_input_t gps_msg;
   mavlink_msg_gps_input_decode(msg, &gps_msg);
-  gps_data.lat = gps_msg.lat;
-  gps_data.lon = gps_msg.lon;
-  gps_data.alt = gps_msg.alt;
-  gps_data.time_usec = gps_msg.time_usec;
-  gps_data.ve = gps_msg.ve;
-  gps_data.vn = gps_msg.vn;
-  xTaskNotify(TaskSensorHandle, SENSOR_FUSE_GPS, eSetBits);
+  if (gps_msg.satellites_visible > 0) {
+    gps_data.lat = gps_msg.lat;
+    gps_data.lon = gps_msg.lon;
+    gps_data.alt = gps_msg.alt;
+    gps_data.time_usec = gps_msg.time_usec;
+    gps_data.ve = gps_msg.ve;
+    gps_data.vn = gps_msg.vn;
+    xTaskNotify(TaskSensorHandle, SENSOR_FUSE_GPS, eSetBits);
+  }
 }
 
 static void handleSetPositionMsg(const mavlink_message_t *msg) {
