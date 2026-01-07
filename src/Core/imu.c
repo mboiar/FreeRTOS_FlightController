@@ -346,10 +346,12 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   // rot_to_quat(gyro_quat, gyro_body_int);
   euler_to_quat(gyro_quat, gyro_body_int[0], gyro_body_int[1],
                 gyro_body_int[2]);
+  // 0);
   quat_norm(gyro_quat);
   quat_mul(eskf->state.quat, eskf->state.quat, gyro_quat);
   quat_norm(eskf->state.quat);
-  quat_rotate_vec(acc_glob, eskf->state.quat, acc_body); // body -> world
+  quat_rotate_vec(acc_glob, eskf->state.quat,
+                  acc_body); // body -> world
 
   // integrate nominal kinematics
   for (int i = 0; i < 3; i++) {
@@ -405,10 +407,16 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
       LOG_ERR(0, "ESKF_COV_NAN at %d", i * P.numCols + i);
 
       // Edgecase: reset position covariance to avoid explosion
-      memset(P_data, 0, sizeof(float) * 15 * 6);
-      for (int i = 6; i < 15; i++) {
-        memset(P_data + i * 15, 0, sizeof(float) * 15);
-      }
+      // memset(P_data, 0, sizeof(float) * 15 * 3);
+      // memset(P_data + 3 * 15, 0, sizeof(float) * 15 * 3);
+      // for (int i = 3; i < 15; i++) {
+      //   memset(P_data + i * 15, 0, sizeof(float) * 3);
+      // }
+      memset(P_data, 0, sizeof(P_data));
+
+      // for (int i = 6; i < 15; i++) {
+      //   memset(P_data + i * 15, 0, sizeof(float) * 15);
+      // }
       return 0;
     }
     if (P_data[i * P.numCols + i] < 0) {
@@ -424,7 +432,7 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
 
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
                float sigma_ww, gyro3d_t *gyro_init, mag3d_t *mag_init,
-               accel3d_t *accel_init) {
+               accel3d_t *accel_init, float offv[3], float offM[3][3]) {
   eskf_state_t st = {
       .pos = {0, 0, 0},
       .vel = {0, 0, 0},
@@ -436,10 +444,10 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   float roll_init, pitch_init, yaw_init;
   float quat_init[4];
   float acc_init[3] = {accel_init->accel_y, accel_init->accel_x,
-                       accel_init->accel_z}; // local NED frame ??
+                       accel_init->accel_z}; // local
 
-  float mag_v[3] = {mag_init->MagY, mag_init->MagX,
-                    -mag_init->MagZ}; // local NED frame
+  float mag_v[3] = {mag_init->MagX, mag_init->MagY,
+                    mag_init->MagZ}; // local frame
   roll_init = atan2f(acc_init[1], acc_init[2]);
   pitch_init = atan2f(-acc_init[0], sqrtf(acc_init[2] * acc_init[2] +
                                           acc_init[1] * acc_init[1]));
@@ -447,12 +455,24 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
                 0); // body->world, i.e. x'=Rx gives x' in global coordinates
   quat_norm(quat_init);
   // quat_inv(quat_init, quat_init);
-  vec_norm(mag_v);
+  // vec_norm(mag_v);
 
   // yaw version
   if (MAG_UPDATE_METHOD == MAG_UPDATE_YAW) {
+
+    mag_v[0] -= offv[0];
+    mag_v[1] -= offv[1];
+    mag_v[2] -= offv[2];
+
+    mag_v[0] =
+        offM[0][0] * mag_v[0] + offM[0][1] * mag_v[1] + offM[0][2] * mag_v[2];
+    mag_v[1] =
+        offM[1][0] * mag_v[0] + offM[1][1] * mag_v[1] + offM[1][2] * mag_v[2];
+    mag_v[2] =
+        offM[2][0] * mag_v[0] + offM[2][1] * mag_v[1] + offM[2][2] * mag_v[2];
+
     quat_rotate_vec(mag_v, quat_init, mag_v);
-    yaw_init = atan2f(mag_v[1], mag_v[0]) + MAG_DECL;
+    yaw_init = -atan2f(mag_v[0], mag_v[1]) + MAG_DECL;
     euler_to_quat(quat_init, roll_init, pitch_init, yaw_init);
     quat_norm(quat_init);
     quat_mul(eskf->state.quat, eskf->state.quat, quat_init);
@@ -489,7 +509,7 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   arm_mat_init_f32(&W, 3, 3, wrot);
 
   arm_mat_init_f32(&V, m, m, V_data);
-  arm_mat_init_f32(&V, m3, m3, V_data);
+  arm_mat_init_f32(&V3, m3, m3, V3_data);
 
   arm_mat_init_f32(&R, 3, 3, Rq);
   arm_mat_init_f32(&F, 15, 15, F_data);
@@ -515,10 +535,43 @@ void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
   arm_mat_init_f32(&HPHic3, m3, m3, HPHic3_data);
 }
 
-int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
-  float mag_meas[3] = {mag->MagY, mag->MagX, -mag->MagZ};
+static void inject_error(eskf_t *eskf) {
+
+  // inject error-state
+  float quat_rot[4];
+  eskf->state.pos[0] += eskf->dx[0];
+  eskf->state.pos[1] += eskf->dx[1];
+  eskf->state.pos[2] += eskf->dx[2];
+  eskf->state.vel[0] += eskf->dx[3];
+  eskf->state.vel[1] += eskf->dx[4];
+  eskf->state.vel[2] += eskf->dx[5];
+  euler_to_quat(quat_rot, eskf->dx[6], eskf->dx[7], eskf->dx[8]);
+  quat_norm(eskf->state.quat);
+
+  quat_mul(eskf->state.quat, eskf->state.quat, quat_rot);
+  quat_norm(eskf->state.quat);
+  eskf->state.gyro_b[0] += eskf->dx[9];
+  eskf->state.gyro_b[1] += eskf->dx[10];
+  eskf->state.gyro_b[2] += eskf->dx[11];
+  eskf->state.acc_b[0] += eskf->dx[12];
+  eskf->state.acc_b[1] += eskf->dx[13];
+  eskf->state.acc_b[2] += eskf->dx[14];
+
+  // clamp bias
+
+  eskf->state.gyro_b[0] = clamp(eskf->state.gyro_b[0], -0.05, 0.05);
+  eskf->state.gyro_b[1] = clamp(eskf->state.gyro_b[1], -0.05, 0.05);
+  eskf->state.gyro_b[2] = clamp(eskf->state.gyro_b[2], -0.05, 0.05);
+  eskf->state.acc_b[0] = clamp(eskf->state.acc_b[0], -0.2, 0.2);
+  eskf->state.acc_b[1] = clamp(eskf->state.acc_b[1], -0.2, 0.2);
+  eskf->state.acc_b[2] = clamp(eskf->state.acc_b[2], -0.2, 0.2);
+}
+
+int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov, float *yaw_m,
+                    float offv[3], float offM[3][3]) {
+  float mag_meas[3] = {mag->MagX, mag->MagY, mag->MagZ};
   // Normalize magnetometer measurement: we only need orientation
-  vec_norm(mag_meas);
+  // vec_norm(mag_meas);
 
   float quat_rot[4];
   float state_yaw, state_roll, state_pitch, yaw;
@@ -526,10 +579,30 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
   if (MAG_UPDATE_METHOD == MAG_UPDATE_YAW) {
     quat_get_euler(eskf->state.quat, &state_roll, &state_pitch, &state_yaw);
     euler_to_quat(quat_rot, state_roll, state_pitch, 0);
-    quat_rotate_vec(mag_meas, quat_rot, mag_meas);
-    yaw = atan2f(mag_meas[1], mag_meas[0]) + MAG_DECL;
 
-    eskf->dx[8] = yaw - state_yaw;
+    mag_meas[0] -= offv[0];
+    mag_meas[1] -= offv[1];
+    mag_meas[2] -= offv[2];
+
+    mag_meas[0] = offM[0][0] * mag_meas[0] + offM[0][1] * mag_meas[1] +
+                  offM[0][2] * mag_meas[2];
+    mag_meas[1] = offM[1][0] * mag_meas[0] + offM[1][1] * mag_meas[1] +
+                  offM[1][2] * mag_meas[2];
+    mag_meas[2] = offM[2][0] * mag_meas[0] + offM[2][1] * mag_meas[1] +
+                  offM[2][2] * mag_meas[2];
+
+    quat_rotate_vec(mag_meas, quat_rot, mag_meas);
+    yaw = -atan2f(mag_meas[0], mag_meas[1]) + MAG_DECL;
+
+    if (yaw - state_yaw < -M_PI) {
+      eskf->dx[8] = yaw - state_yaw + 2 * M_PI;
+    } else if (yaw - state_yaw > M_PI) {
+      eskf->dx[8] = yaw - state_yaw - 2 * M_PI;
+    } else {
+      eskf->dx[8] = yaw - state_yaw; // atan2f(sinf(yaw - state_yaw),
+                                     // cosf(yaw - state_yaw));
+    }
+    *yaw_m = yaw;
     memset(H_data, 0, sizeof(H_data));
     H_data[8] = 1;
   } else {
@@ -618,10 +691,7 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
     }
   }
 
-  // inject error-state
-  euler_to_quat(quat_rot, 0, 0, eskf->dx[8]);
-  quat_mul(eskf->state.quat, eskf->state.quat, quat_rot);
-  quat_norm(eskf->state.quat);
+  inject_error(eskf);
 
   // reset error-state mean
   memset(eskf->dx, 0, sizeof(eskf->dx));
@@ -631,7 +701,7 @@ int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov) {
 
 int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
                     int32_t home_lat, float home_alt, float hacc, float vacc,
-                    float sacc) {
+                    float sacc, float pm[5]) {
   float posvel_diff[5];
   if (home_lat != 0 && home_lon != 0) {
     lla_to_ned(data->lat, data->lon, data->alt, home_lat, home_lon, home_alt,
@@ -688,7 +758,7 @@ int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t home_lon,
   // set3x3(P_data, 6, 6, P_data, 15);
 
   // inject error-state
-  linv3(eskf->state.pos, eskf->state.pos, eskf->dx, 1, 1);
+  inject_error(eskf);
 
   // reset error-state mean
   memset(&eskf->dx, 0, sizeof(eskf->dx));
@@ -743,9 +813,10 @@ int eskf_update_baro(eskf_t *eskf, float alt, float cov) {
       P_data[i * P.numCols + i] = 0;
     }
   }
-
-  // inject error-state
-  linv3(eskf->state.pos, eskf->state.pos, eskf->dx, 1, 1);
+  // eskf->dx[6] = 0;
+  // eskf->dx[7] = 0;
+  // eskf->dx[8] = 0;
+  inject_error(eskf);
 
   // reset error-state mean
   memset(&eskf->dx, 0, sizeof(eskf->dx));

@@ -57,7 +57,7 @@ extern float acc_glob[3];
  */
 void eskf_init(eskf_t *eskf, float sigma_an, float sigma_wn, float sigma_aw,
                float sigma_ww, gyro3d_t *gyro_bm, mag3d_t *mag_init,
-               accel3d_t *accel_init);
+               accel3d_t *accel_init, float offv[3], float offM[3][3]);
 
 /**
  * @brief ESKF prediction step.
@@ -72,7 +72,8 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
  * @brief ESKF update using magnetometer measurement.
  * @retval None
  */
-int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov);
+int eskf_update_yaw(eskf_t *eskf, mag3d_t *mag, float cov, float *yaw_m,
+                    float offv[3], float offM[3][3]);
 
 /**
  * @brief ESKF update using barometer measurement.
@@ -84,7 +85,8 @@ int eskf_update_baro(eskf_t *eskf, float alt, float cov);
 void eskf_update_dist_sensor(eskf_t *eskf, float alt, float cov);
 
 int eskf_update_gps(eskf_t *eskf, const GPS_data *data, int32_t lon,
-                    int32_t lat, float alt, float hacc, float vacc, float sacc);
+                    int32_t lat, float alt, float hacc, float vacc, float sacc,
+                    float pm[5]);
 
 void eskf_get_cov_orientation(eskf_t *eskf, float dst[9]);
 
