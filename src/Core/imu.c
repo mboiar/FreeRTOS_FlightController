@@ -340,8 +340,8 @@ int eskf_predict(eskf_t *eskf, const accel3d_t *acc_m, const gyro3d_t *gyro_m,
   gyro_body[2] = gyro_m->gyro_z;
 
   linv3(acc_body, acc_body, eskf->state.acc_b, 9.81f, -1);
-  linv3(gyro_body_int, gyro_body, eskf->state.gyro_b, 2 * dt,
-        -2 * dt); // substract bias
+  linv3(gyro_body_int, gyro_body, eskf->state.gyro_b, dt,
+        -dt); // substract bias
   // quat_inv(quat_body_to_ned, eskf->state.quat);
   // rot_to_quat(gyro_quat, gyro_body_int);
   euler_to_quat(gyro_quat, gyro_body_int[0], gyro_body_int[1],
@@ -550,12 +550,12 @@ static void inject_error(eskf_t *eskf) {
 
   quat_mul(eskf->state.quat, eskf->state.quat, quat_rot);
   quat_norm(eskf->state.quat);
-  eskf->state.gyro_b[0] += eskf->dx[9];
-  eskf->state.gyro_b[1] += eskf->dx[10];
-  eskf->state.gyro_b[2] += eskf->dx[11];
-  eskf->state.acc_b[0] += eskf->dx[12];
-  eskf->state.acc_b[1] += eskf->dx[13];
-  eskf->state.acc_b[2] += eskf->dx[14];
+  eskf->state.acc_b[0] += eskf->dx[9];
+  eskf->state.acc_b[1] += eskf->dx[10];
+  eskf->state.acc_b[2] += eskf->dx[11];
+  eskf->state.gyro_b[0] += eskf->dx[12];
+  eskf->state.gyro_b[1] += eskf->dx[13];
+  eskf->state.gyro_b[2] += eskf->dx[14];
 
   // clamp bias
 

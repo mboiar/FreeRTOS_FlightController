@@ -54,10 +54,10 @@
 
 #define ESKF_SAN 0.02f     // m/s^2
 #define ESKF_SWN 0.002f    // rad/s
-#define ESKF_SAW 0.02f     // m/s^2/sqrtHz
-#define ESKF_SWW 0.00001f  // rad/s/sqrtHz
+#define ESKF_SAW 0.005f    // m/s^2/sqrtHz
+#define ESKF_SWW 0.0001f   // rad/s/sqrtHz
 #define EKSF_SMAG 0.05     // ?
-#define EKSF_SBARO 0.1     // m ?
+#define EKSF_SBARO 1.0     // m ?
 #define ESKF_SGPS_VEL 0.05 // m/s
 #define ESKF_SGPS_POS 2.5  // m
 
@@ -66,3 +66,4 @@
 #define RADIO_DEBUG 0
 #define ENABLE_HIL 1
 #define ENABLE_GUIDED 1
+#define GPS_REQUIRED 0
