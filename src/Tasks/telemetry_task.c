@@ -10,7 +10,7 @@ static char buf[512];
 #endif
 
 uint32_t get_time_since_boot_us() {
-  return __HAL_TIM_GET_COUNTER(&htim5) * 100;
+  return __HAL_TIM_GET_COUNTER(&htim5) * 100 * 2;
 }
 
 static uint8_t telem_buf[16];

@@ -31,7 +31,8 @@ static BMP_CAL_T_PARAMS tp;
 static BMP_CAL_P_PARAMS pp;
 static BaseType_t queue_status;
 static mavlink_message_t msg;
-static TickType_t cur_tick, last_tick;
+static TickType_t cur_tick;
+static uint32_t last_tim5_cnt, tim5_cnt;
 static float dt;
 static size_t msglen;
 
@@ -63,6 +64,9 @@ static float PVcov[21], Qcov[9];
 
 static bool home_set;
 static float pm[5];
+
+// static float euler[3];
+static bool calib_start = false;
 
 /**
  * @brief Task to handle sensor operations
@@ -106,7 +110,7 @@ void TaskSensor(void *argument) {
 
           if (tick % 2 == 0) { // 100 Hz
 
-            if (sensors_calibrate_stationary()) {
+            if (sensors_calibrate_stationary(&calib_start)) {
               // TODO: check if values make sense
               if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
                                     &gyro_offset, &offA, scaleA) != HAL_OK) {
@@ -131,7 +135,7 @@ void TaskSensor(void *argument) {
               //     fc_state.home_lat = gps_data.lat;
               //   } while (!(notif & SENSOR_FUSE_GPS));
               // }
-              last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100; // us
+              last_tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
               xTaskNotify(TaskFlightLoopHandle, PID_ARM_READY, eSetBits);
             }
           }
@@ -142,14 +146,20 @@ void TaskSensor(void *argument) {
                                 &gyro_offset, &offA, scaleA) != HAL_OK) {
             fc_state.state = MAV_STATE_EMERGENCY;
           }
-          dt = (__HAL_TIM_GET_COUNTER(&htim5) * 100 - last_tick) /
-               1000000.0f; // s
+          {
+            tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
+            dt = (float)(tim5_cnt - last_tim5_cnt) *
+                 (float)(htim5.Init.Prescaler + 1U) / (float)(TIM_CLK_FREQ) *
+                 2.0;
+          }
 
           if (eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro, dt) < 0) {
             fc_state.state = MAV_STATE_CRITICAL;
           }
 
-          last_tick = __HAL_TIM_GET_COUNTER(&htim5) * 100;
+          // quat_get_euler(eskf.state.quat, &euler[0], &euler[1], &euler[2]);
+
+          last_tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
 
           tick_end = xTaskGetTickCount();
 
@@ -188,13 +198,21 @@ void TaskSensor(void *argument) {
               // TODO disable auto, revert to manual rc
             }
 
+            // msglen = mavlink_msg_highres_imu_pack(
+            //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+            //     tmp_data.accel.accel_x, tmp_data.accel.accel_y,
+            //     tmp_data.accel.accel_z, tmp_data.gyro.gyro_x,
+            //     tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_z, mag.MagX,
+            //     mag.MagY, mag.MagZ, tmp_data.heading, pm[4], tmp_data.alt,
+            //     pm[5], 0xFFFF, 0);
+
             msglen = mavlink_msg_highres_imu_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                tmp_data.accel.accel_x, tmp_data.accel.accel_y,
-                tmp_data.accel.accel_z, tmp_data.gyro.gyro_x,
-                tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_z, mag.MagX, mag.MagY,
-                mag.MagZ, tmp_data.heading, pm[4], tmp_data.alt, pm[5], 0xFFFF,
-                0);
+                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.acc_b[0],
+                eskf.state.acc_b[1], eskf.state.acc_b[2],
+                tmp_data.accel.accel_y, tmp_data.accel.accel_x,
+                tmp_data.accel.accel_z, tmp_data.gyro.gyro_y,
+                tmp_data.gyro.gyro_x, tmp_data.gyro.gyro_z, tmp_data.heading,
+                dt, tmp_data.alt, 0, 0xFFFF, 0);
             comm_tx_send(&msg);
           }
           if (tick % 20 == 0) {
@@ -363,19 +381,29 @@ static HAL_StatusTypeDef sensors_init() {
   return HAL_OK;
 }
 
-static uint8_t sensors_calibrate_stationary() {
+static uint8_t sensors_calibrate_stationary(bool *calib_start) {
   static size_t calib_tick;
+
+  if (!(*calib_start)) {
+    *calib_start = true;
+    calib_tick = 0;
+  }
+
   calib_tick++;
-  if (calib_tick % 100 == 0 && home_set) {
+
+  if (calib_tick % 100 == 0 && (!GPS_REQUIRED | home_set)) {
     LOG_INFO(0, "BIAS %.4f %.4f %.4f %.4f", gyro_offset.gyro_x,
              gyro_offset.gyro_y, gyro_offset.gyro_z, p_ref);
     home_set = false;
+    *calib_start = false;
+
     return 1;
   }
   mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp, &offG, &offA,
                     scaleA);
   bmp_acquire_data(&bmp_pressure, &(tmp_data.bmp_temp), tp,
                    pp); // blocking
+
   p_ref = p_ref * (calib_tick - 1) / calib_tick + bmp_pressure / calib_tick;
   gyro_offset.gyro_x = gyro_offset.gyro_x * (calib_tick - 1) / calib_tick +
                        tmp_data.gyro.gyro_x / calib_tick;

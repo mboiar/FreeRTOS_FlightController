@@ -9,6 +9,10 @@
 #define BUFFER_SIZE MAVLINK_MAX_PACKET_LEN
 #define PACKET_SIZE 128
 
+#define TIM_CLK_FREQ                                                           \
+  (HAL_RCC_GetPCLK1Freq() *                                                    \
+   (((RCC->CFGR & RCC_CFGR_PPRE1) == RCC_CFGR_PPRE1_DIV1) ? 1U : 2U))
+
 typedef enum {
   FLIGHT_MODE_ACRO,
   FLIGHT_MODE_STABILIZED,
