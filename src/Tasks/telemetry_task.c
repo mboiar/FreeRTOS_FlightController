@@ -13,7 +13,7 @@ uint32_t get_time_since_boot_us() {
   return __HAL_TIM_GET_COUNTER(&htim5) * 100 * 2;
 }
 
-static uint8_t telem_buf[16];
+static uint8_t telem_buf[16], len;
 
 /**
  * @brief Sends telemetry
@@ -74,6 +74,43 @@ void TaskTelemetry(void *argument) {
           HAL_OK) {
         LOG_ERR(0, "UNABLE_TO_SEND_TELEM");
       }
+
+      // Do NOT start another send until previous completed
+      xTaskNotifyWait(pdFALSE, 0x01, &notif, pdMS_TO_TICKS(100));
+
+      switch (fc_state.custom_mode) {
+      case FLIGHT_MODE_ACRO:
+        len = 5;
+        crsf_pack_flight_mode(telem_buf, "ACRO", len);
+        break;
+      case FLIGHT_MODE_STABILIZED:
+        len = 10;
+        crsf_pack_flight_mode(telem_buf, "STABILIZE", len);
+        break;
+      case FLIGHT_MODE_POSHOLD:
+        len = 8;
+        crsf_pack_flight_mode(telem_buf, "POSHOLD", len);
+        break;
+      case FLIGHT_MODE_GUIDED:
+        len = 7;
+        crsf_pack_flight_mode(telem_buf, "GUIDED", len);
+        break;
+      case FLIGHT_MODE_LAND_UNSUPPORTED:
+        len = 5;
+        crsf_pack_flight_mode(telem_buf, "LAND", len);
+        break;
+      default:
+        len = 8;
+        crsf_pack_flight_mode(telem_buf, "UNKNOWN", len);
+        break;
+      }
+
+      if (HAL_UART_Transmit_IT(&huart2, telem_buf, len + 4) != HAL_OK) {
+        LOG_ERR(0, "UNABLE_TO_SEND_TELEM");
+      }
+
+      // Do NOT start another send until previous completed
+      xTaskNotifyWait(pdFALSE, 0x01, &notif, pdMS_TO_TICKS(100));
     }
 
     if (tick % 10 == 0) {
@@ -112,4 +149,11 @@ void TaskTelemetry(void *argument) {
 
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+}
+
+void Telem_UART_TxCpltHandler() {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  xTaskNotifyFromISR(TaskTelemetryHandle, 0x01, eSetBits,
+                     &xHigherPriorityTaskWoken);
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

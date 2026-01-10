@@ -33,6 +33,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart == &huart1) {
     Logging_UART_TxCpltHandler();
   }
+  if (huart == &huart2) {
+    Telem_UART_TxCpltHandler();
+  }
 }
 
 void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart) {

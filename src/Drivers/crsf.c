@@ -124,3 +124,21 @@ void crsf_pack_battery(uint8_t frame[16], uint16_t voltage_mv,
 
   frame[idx++] = crc8(&frame[2], 1 + 7);
 }
+
+void crsf_pack_flight_mode(uint8_t frame[], char *flight_mode_str, int len) {
+  if (len > CRSF_MAX_FRAME_LEN - 4) {
+    len = CRSF_MAX_FRAME_LEN - 4;
+  }
+
+  uint8_t idx = 0;
+
+  frame[idx++] = CRSF_SYNC_BYTE;
+
+  frame[idx++] = len + 2;
+
+  frame[idx++] = CRSF_TYPE_FLIGHT_MODE;
+
+  memcpy(frame + idx, flight_mode_str, len);
+
+  frame[idx + len] = crc8(&frame[2], len + 1);
+}

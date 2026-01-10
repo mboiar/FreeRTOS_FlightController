@@ -12,6 +12,7 @@
 
 #define CRSF_SYNC_BYTE 0xC8
 #define CRSF_TYPE_BATTERY 0x08
+#define CRSF_TYPE_FLIGHT_MODE 0x21
 
 #define RC_VAL_MAX (float)1811
 #define RC_VAL_MIN (float)174
@@ -51,3 +52,5 @@ void radio_unpack_rc(crsf_rc_t *rc_data, const uint8_t *rc_data_raw);
 void crsf_pack_battery(uint8_t frame[16], uint16_t voltage_mv,
                        uint16_t current_ma, uint16_t capacity_mah,
                        uint8_t remaining_percent);
+
+void crsf_pack_flight_mode(uint8_t frame[], char *flight_mode_str, int len);

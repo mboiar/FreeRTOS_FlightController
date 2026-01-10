@@ -88,3 +88,4 @@ void Flash_SPI_TxRxCpltHandler();
 // void TIM3_TaskNotifyISR();
 void CommRx_UARTEx_RxEventHandler(uint16_t Size);
 void DistanceSensor_RxCpltCallback(uint16_t GPIO_Pin);
+void Telem_UART_TxCpltHandler();
