@@ -66,8 +66,8 @@ HAL_StatusTypeDef mpu6050_heartbeat() {
 HAL_StatusTypeDef mpu6050_read_reg_burst(uint8_t reg, uint16_t data_size,
                                          uint8_t *value) {
   xTaskToNotify = xTaskGetCurrentTaskHandle();
-  if (HAL_I2C_Mem_Read_DMA(&hi2c1, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT,
-                           value, data_size) != HAL_OK) {
+  if (HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT,
+                       value, data_size, 100) != HAL_OK) {
     // TODO: handle error
   }
   return HAL_OK;
@@ -80,13 +80,11 @@ HAL_StatusTypeDef mpu6050_set_power_options(uint8_t opt0, uint8_t opt1) {
 
 HAL_StatusTypeDef mpu6050_set_gyro_accel_config(uint8_t fs_sel,
                                                 uint8_t afs_sel) {
-  uint8_t config = (fs_sel & 0x01) << MPU6050_FS_SEL_OFFSET;
-  config |= (fs_sel & 0x02) << (MPU6050_FS_SEL_OFFSET + 1);
+  uint8_t config = (fs_sel & 0x03) << MPU6050_FS_SEL_OFFSET;
   if (mpu6050_write_reg(MPU6050_GYRO_CONFIG, config) != HAL_OK) {
     return HAL_ERROR;
   }
-  config = (afs_sel & 0x01) << MPU6050_AFS_SEL_OFFSET;
-  config |= (afs_sel & 0x02) << (MPU6050_AFS_SEL_OFFSET + 1);
+  config = (afs_sel & 0x03) << MPU6050_AFS_SEL_OFFSET;
   return mpu6050_write_reg(MPU6050_ACCEL_CONFIG, config);
 }
 
@@ -98,11 +96,6 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
   mpu6050_raw_t val;
   uint8_t rx_data[14] = {0};
   status = mpu6050_read_reg_burst(MPU6050_ACCEL_XOUT_H, 14, rx_data);
-  do {
-    xTaskNotifyWait(pdFALSE, 0x8000, &notif, portMAX_DELAY);
-  } while ((notif & 0x8000) == 0);
-
-  notif &= ~0x8000;
 
   val.accel_x = (int16_t)(rx_data[0] << 8) | rx_data[1];
   val.accel_y = (int16_t)(rx_data[2] << 8) | rx_data[3];
@@ -112,17 +105,14 @@ HAL_StatusTypeDef mpu6050_read_data(accel3d_t *acc, gyro3d_t *gyro, float *temp,
   val.gyro_y = (int16_t)(rx_data[10] << 8) | rx_data[11];
   val.gyro_z = (int16_t)(rx_data[12] << 8) | rx_data[13];
   acc->accel_x =
-      (mpu6050_calc_accel(val.accel_x, AFS_2G) - offA->accel_x) * scaleA[0];
+      (mpu6050_calc_accel(val.accel_x, AFS_8G) - offA->accel_x) * scaleA[0];
   acc->accel_y =
-      (mpu6050_calc_accel(val.accel_y, AFS_2G) - offA->accel_y) * scaleA[1];
+      (mpu6050_calc_accel(val.accel_y, AFS_8G) - offA->accel_y) * scaleA[1];
   acc->accel_z =
-      (mpu6050_calc_accel(val.accel_z, AFS_2G) - offA->accel_z) * scaleA[2];
-  gyro->gyro_x =
-      -1.0f * mpu6050_calc_gyro(val.gyro_x, FS_SEL_250); // - offG->gyro_x;
-  gyro->gyro_y =
-      -1.0f * mpu6050_calc_gyro(val.gyro_y, FS_SEL_250); // - offG->gyro_y;
-  gyro->gyro_z =
-      -1.0f * mpu6050_calc_gyro(val.gyro_z, FS_SEL_250); // - offG->gyro_z;
+      (mpu6050_calc_accel(val.accel_z, AFS_8G) - offA->accel_z) * scaleA[2];
+  gyro->gyro_x = -1.0f * mpu6050_calc_gyro(val.gyro_x, FS_SEL_1000);
+  gyro->gyro_y = -1.0f * mpu6050_calc_gyro(val.gyro_y, FS_SEL_1000);
+  gyro->gyro_z = -1.0f * mpu6050_calc_gyro(val.gyro_z, FS_SEL_1000);
   *temp = mpu6050_calc_temp(val.temp);
 
   return HAL_OK;
@@ -137,7 +127,7 @@ float mpu6050_calc_accel(int16_t raw_accel, uint16_t scale) {
 }
 
 float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale) {
-  float fscale = 1.0f;
+  float fscale = 0.0f;
   switch (scale) {
   case FS_SEL_250:
     fscale = 131.0f;
@@ -154,7 +144,10 @@ float mpu6050_calc_gyro(int16_t raw_gyro, uint16_t scale) {
   default:
     break;
   }
-  return (float)raw_gyro * M_PI / fscale / 180.0f;
+  if (fscale == 0.0f) {
+    return 0.0f;
+  }
+  return (float)raw_gyro * (float)M_PI / fscale / 180.0f;
 }
 
 HAL_StatusTypeDef mpu6050_set_config(uint8_t cfg0, uint8_t cfg1, uint8_t cfg2,

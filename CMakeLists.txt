@@ -25,7 +25,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O3 -ffast-math")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O3")
 
 endif()
 
@@ -64,16 +64,22 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${SOFTWARE_SRC}
 )
 
+# target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wextra -Wshadow -Wundef -Wconversion -Wdouble-promotion)
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${SOFTWARE_SRC_PATH}
-    ${SOFTWARE_SRC_PATH}/Drivers/mavlink/v2.0
     ${SOFTWARE_SRC_PATH}/Drivers
     ${SOFTWARE_SRC_PATH}/Tasks
     ${SOFTWARE_SRC_PATH}/Core
-    CMSIS-DSP/Include
 )
+
+target_include_directories(${CMAKE_PROJECT_NAME} 
+    SYSTEM PRIVATE
+    ${SOFTWARE_SRC_PATH}/Drivers/mavlink/v2.0
+    CMSIS-DSP/Include
+)   
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE

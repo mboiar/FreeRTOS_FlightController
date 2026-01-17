@@ -84,12 +84,14 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
 
     TIM3tick++;
-    // 200 Hz
-    if (TIM3tick % 5 == 0) {
+    // 1000 Hz
+    if (TIM3tick % 1 == 0) {
       if (TaskSensorHandle != NULL) {
         xTaskNotifyFromISR(TaskSensorHandle, 0x01, eSetBits,
                            &xHigherPriorityTaskWoken);
       }
+    }
+    if (TIM3tick % 2 == 0) {
       if (TaskFlightLoopHandle != NULL) {
         xTaskNotifyFromISR(TaskFlightLoopHandle, 0x01, eSetBits,
                            &xHigherPriorityTaskWoken);

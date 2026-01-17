@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stdint.h"
+#include "tim.h"
 
 typedef struct {
   uint16_t fl, fr, bl, br;
@@ -14,3 +15,5 @@ void pwm_set_all(const motors_pwm_s *val);
 void pwm_init();
 
 void pwm_deinit();
+
+void pwm_set_pulse_us(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t us);

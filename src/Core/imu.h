@@ -95,3 +95,17 @@ void eskf_get_cov_posvel(eskf_t *eskf, float dst[21]);
 void eskf_get_cov_pos(eskf_t *eskf, float dst[9]);
 
 void quat_get_euler(const float q[4], float *roll, float *pitch, float *yaw);
+
+void eskf_get_cov_bias(eskf_t *eskf, float dst[6]);
+
+int eskf_update_vbaro(eskf_t *eskf, float alt, float cov, float dt);
+
+int eskf_update_accel(eskf_t *eskf, const accel3d_t *acc_m);
+
+int mahony_predict(eskf_t *eskf, const gyro3d_t *gyro_m, const float dt);
+
+int mahony_update(eskf_t *eskf, const acc_m[3], mag3d_t *mag, float *yaw_m,
+                  float offv[3], float offM[3][3], float dt);
+
+void mahony_init(eskf_t *eskf, gyro3d_t *gyro_init, mag3d_t *mag_init,
+                 accel3d_t *accel_init, float offv[3], float offM[3][3]);

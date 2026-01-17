@@ -68,6 +68,11 @@ extern sensor_data_t imu_data;
 
 extern eskf_t eskf;
 
+extern float gyrof[3];
+extern float acc_f[3];
+
+extern float euler[3];
+
 uint32_t get_time_since_boot_us();
 
 void StartupTask(void *argument);

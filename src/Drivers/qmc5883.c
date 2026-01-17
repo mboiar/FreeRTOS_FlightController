@@ -72,7 +72,9 @@ HAL_StatusTypeDef qmc5883_status(uint8_t *status) {
   return qmc5883_read_reg(QMC5883_STATUS_REG, status);
 }
 
-float qmc5883_data_convert(int16_t val) { return ((float)val) / 32768.0 * 2; }
+float qmc5883_data_convert(int16_t val) {
+  return ((float)val) / 32768.0f * 2.0f;
+}
 
 float qmc5883_get_heading(const mag3d_t *data, float decl) {
   float heading = atan2f(data->MagY, data->MagX);

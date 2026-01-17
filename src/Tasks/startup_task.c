@@ -30,6 +30,7 @@ void StartupTask(void *argument) {
 
   for (int i = 0; i < HCSR04_SENSOR_COUNT; i++) {
     hcsr04_init(&dist_sensors[i]);
+    fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_PROXIMITY;
   }
   hcsr04_trigger();
   last_dist_tick = xTaskGetTickCount();
@@ -39,14 +40,14 @@ void StartupTask(void *argument) {
       handleDistEvent(&event);
     }
     if (xTaskNotifyWait(pdFALSE, 0x01, &notif, 0) == pdTRUE) {
-      notif &= ~0x01;
+      notif &= ~1UL;
       cur_tick = get_time_since_boot_us();
 
       if (dist_meas_cnt % HCSR04_BUFFER_LEN ==
           HCSR04_BUFFER_LEN - 1) { // filter and report on buffer full
         for (uint8_t i = 0; i < HCSR04_SENSOR_COUNT; i++) {
           dist_sensors[i].last_distance_cm =
-              filter_dist(dist_buf[i], dist_sensors[i].last_distance_cm, 0.8,
+              filter_dist(dist_buf[i], dist_sensors[i].last_distance_cm, 0.8f,
                           &(dist_filter_init[i]), 2, HCSR04_BUFFER_LEN);
 
           mavlink_msg_command_long_pack(
@@ -56,7 +57,7 @@ void StartupTask(void *argument) {
               dist_sensors[2].last_distance_cm,
               dist_sensors[3].last_distance_cm,
               dist_sensors[4].last_distance_cm,
-              dist_sensors[5].last_distance_cm, cur_tick);
+              dist_sensors[5].last_distance_cm, (float)cur_tick);
           comm_tx_send(&msg);
         }
       }
@@ -68,7 +69,7 @@ void StartupTask(void *argument) {
       hcsr04_trigger();
       if (xTaskNotifyWait(pdFALSE, 0x02, &notif, portMAX_DELAY) == pdTRUE &&
           (notif & 0x02)) {
-        notif &= ~0x02;
+        notif &= ~(1UL << 1);
       }
       last_dist_tick = TIM3->CNT;
     }
@@ -76,7 +77,7 @@ void StartupTask(void *argument) {
 }
 
 void handleDistEvent(const EdgeEvent *ev) {
-  float dur;
+  uint32_t dur;
 
   if (ev->is_rising == GPIO_PIN_SET) {
     /* Rising edge */
@@ -86,13 +87,12 @@ void handleDistEvent(const EdgeEvent *ev) {
     /* Falling edge */
     if (dist_sensors[ev->sensor_id].state == 2 &&
         dist_sensors[ev->sensor_id].t_start_us != 0) {
-      dur = (float)(get_time_since_boot_us() -
-                    dist_sensors[ev->sensor_id].t_start_us);
+      dur = (get_time_since_boot_us() - dist_sensors[ev->sensor_id].t_start_us);
       dist_sensors[ev->sensor_id].duration_us = dur;
 
       // if (dur >= HCSR04_MIN_VALID_US && dur <= HCSR04_MAX_ECHO_US) {
       dist_buf[ev->sensor_id][dist_meas_cnt % HCSR04_BUFFER_LEN] =
-          duration_to_dist(dur, 22.2);
+          duration_to_dist(dur, 22.2f);
       // } else {
       // dist_buf[i][dist_meas_cnt % HCSR04_BUFFER_LEN] = -1.0f; /* invalid
       // */

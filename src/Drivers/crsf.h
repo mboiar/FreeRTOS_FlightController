@@ -14,13 +14,13 @@
 #define CRSF_TYPE_BATTERY 0x08
 #define CRSF_TYPE_FLIGHT_MODE 0x21
 
-#define RC_VAL_MAX (float)1811
-#define RC_VAL_MIN (float)174
+#define RC_VAL_MAX 1811.0f
+#define RC_VAL_MIN 174.0f
 #define RC_VAL_MID ((RC_VAL_MAX + RC_VAL_MIN) / (float)2)
 #define RC_RANGE (RC_VAL_MAX - RC_VAL_MIN)
 
-#define RC_VAL8_MAX (float)1792
-#define RC_VAL8_MIN (float)191
+#define RC_VAL8_MAX 1792.0f
+#define RC_VAL8_MIN 191.0f
 #define RC_VAL8_MID ((RC_VAL8_MAX + RC_VAL8_MIN) / (float)2)
 #define RC_RANGE8 (RC_VAL8_MAX - RC_VAL8_MIN)
 

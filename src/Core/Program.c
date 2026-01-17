@@ -114,8 +114,6 @@ void Init() {
     Error_Handler();
   }
 
-  // state.sysid = 1;
-
   xLogQueue = xQueueCreateStatic(LOG_QUEUE_LEN, BUFFER_SIZE, logQueue_Storage,
                                  &logQueueStruct);
   if (xLogQueue == NULL) {

@@ -10,7 +10,7 @@ static char buf[512];
 #endif
 
 uint32_t get_time_since_boot_us() {
-  return __HAL_TIM_GET_COUNTER(&htim5) * 100 * 2;
+  return __HAL_TIM_GET_COUNTER(&htim5) * 100 * 1;
 }
 
 static uint8_t telem_buf[16], len;
@@ -84,8 +84,8 @@ void TaskTelemetry(void *argument) {
         crsf_pack_flight_mode(telem_buf, "ACRO", len);
         break;
       case FLIGHT_MODE_STABILIZED:
-        len = 10;
-        crsf_pack_flight_mode(telem_buf, "STABILIZE", len);
+        len = 5;
+        crsf_pack_flight_mode(telem_buf, "STAB", len);
         break;
       case FLIGHT_MODE_POSHOLD:
         len = 8;
@@ -116,13 +116,13 @@ void TaskTelemetry(void *argument) {
     if (tick % 10 == 0) {
       mavlink_msg_heartbeat_pack(fc_state.system_id, fc_state.comp_id, &msg,
                                  fc_state.type, fc_state.autopilot,
-                                 fc_state.mode, fc_state.custom_mode,
+                                 fc_state.mode, (uint8_t)fc_state.custom_mode,
                                  fc_state.state);
       comm_tx_send(&msg);
 
-      if (fc_state.state == MAV_STATE_STANDBY) {
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-      }
+      // if (fc_state.state == MAV_STATE_STANDBY) {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      // }
 
       watermark[0] = uxTaskGetStackHighWaterMark(TaskSensorHandle);
       watermark[1] = uxTaskGetStackHighWaterMark(TaskFlightLoopHandle);

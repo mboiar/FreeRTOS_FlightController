@@ -1,5 +1,12 @@
 #include "motor.h"
-#include "tim.h"
+
+void pwm_set_pulse_us(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t us) {
+  if (us < PWM_MIN)
+    us = PWM_MIN;
+  if (us > PWM_MAX)
+    us = PWM_MAX;
+  __HAL_TIM_SET_COMPARE(htim, channel, us);
+}
 
 void pwm_set_all(const motors_pwm_s *val) {
   pwm_set_pulse_us(&htim1, TIM_CHANNEL_1, val->fr);

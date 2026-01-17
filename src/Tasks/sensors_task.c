@@ -13,6 +13,31 @@ static void sensors_calibrate();
 static uint8_t sensors_calibrate_stationary();
 static HAL_StatusTypeDef sensors_init();
 
+typedef struct {
+  float b0, b1, b2;
+  float a1, a2;
+  float z1, z2;
+} biquad_t;
+
+float biquad_update(biquad_t *f, float x) {
+  float y = f->b0 * x + f->z1;
+  f->z1 = f->b1 * x - f->a1 * y + f->z2;
+  f->z2 = f->b2 * x - f->a2 * y;
+  return y;
+}
+
+void biquad_init(biquad_t *f, float fc, float fs) {
+  float w = (float)M_PI * 2 * fc / fs;
+  float a, a0;
+  a = sinf(w) / (float)M_SQRT2;
+  a0 = 1 + a;
+  f->b0 = ((1 - cosf(w)) / 2) / a0;
+  f->b1 = ((1 - cosf(w))) / a0;
+  f->b2 = ((1 - cosf(w)) / 2) / a0;
+  f->a1 = (-2 * cosf(w)) / a0;
+  f->a2 = (1 - a) / a0;
+}
+
 sensor_data_t imu_data;
 static sensor_data_t tmp_data;
 
@@ -29,7 +54,7 @@ const BMP_CTRL_MEAS_PARAMS BMP280_CTRL_MEAS_DEFAULT = {
 static float mpu_temp;
 static BMP_CAL_T_PARAMS tp;
 static BMP_CAL_P_PARAMS pp;
-static BaseType_t queue_status;
+// static BaseType_t queue_status;
 static mavlink_message_t msg;
 static TickType_t cur_tick;
 static uint32_t last_tim5_cnt, tim5_cnt;
@@ -52,21 +77,28 @@ float bmp_temp, bmp_pressure;
 static gyro3d_t gyro_offset = {0, 0, 0};
 static accel3d_t accel_offset = {0, 0, 0};
 
+float gyrof[3];
+float acc_f[3];
+biquad_t biquad[3];
+biquad_t biq_acc[3];
+
 eskf_t eskf;
 
-static TickType_t tick_end, tick_start;
+static uint32_t tick_end, tick_start;
 
-static float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
-             sigma_aw = ESKF_SAW, sigma_mag = EKSF_SMAG,
-             sigma_baro = EKSF_SBARO;
+// static float sigma_ww = ESKF_SWW, sigma_wn = ESKF_SWN, sigma_an = ESKF_SAN,
+//              sigma_aw = ESKF_SAW, sigma_mag = EKSF_SMAG,
+//              sigma_baro = EKSF_SBARO;
 
-static float PVcov[21], Qcov[9];
+// static float PVcov[21], Qcov[9], BiasCov[6];
 
 static bool home_set;
-static float pm[5];
+// static float pm[5];
 
-// static float euler[3];
+float euler[3];
 static bool calib_start = false;
+
+static char buf[20];
 
 /**
  * @brief Task to handle sensor operations
@@ -79,7 +111,7 @@ void TaskSensor(void *argument) {
                                 MAV_SEVERITY_CRITICAL, "Sensor init error", 0,
                                 0);
     comm_tx_send(&msg);
-    vTaskSuspendAll();
+    fc_state.state = MAV_STATE_CRITICAL;
   }
   if (fc_state.state == MAV_STATE_BOOT) {
     fc_state.state = MAV_STATE_STANDBY;
@@ -121,9 +153,18 @@ void TaskSensor(void *argument) {
               }
               // tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
 
-              eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
-                        &gyro_offset, &mag, &accel_offset, magcal_offset,
-                        magcal_mat);
+              // eskf_init(&eskf, sigma_an, sigma_wn, sigma_aw, sigma_ww,
+              //           &gyro_offset, &mag, &accel_offset, magcal_offset,
+              //           magcal_mat);
+              mahony_init(&eskf, &gyro_offset, &mag, &accel_offset,
+                          magcal_offset, magcal_mat);
+
+              biquad_init(&biquad[0], 20, 1000);
+              biquad_init(&biquad[1], 20, 1000);
+              biquad_init(&biquad[2], 20, 1000);
+              biquad_init(&biq_acc[0], 5, 1000);
+              biquad_init(&biq_acc[1], 5, 1000);
+              biquad_init(&biq_acc[2], 5, 1000);
 
               // need GPS in case of auto
               // if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
@@ -141,106 +182,129 @@ void TaskSensor(void *argument) {
           }
 
         } else if ((fc_state.state == MAV_STATE_ACTIVE)) {
-          tick_start = xTaskGetTickCount();
+          tick_start = get_time_since_boot_us();
           if (mpu6050_read_data(&tmp_data.accel, &tmp_data.gyro, &mpu_temp,
                                 &gyro_offset, &offA, scaleA) != HAL_OK) {
             fc_state.state = MAV_STATE_EMERGENCY;
+            continue;
           }
+          gyrof[0] = biquad_update(&biquad[0], tmp_data.gyro.gyro_y);
+          gyrof[1] = biquad_update(&biquad[1], tmp_data.gyro.gyro_x);
+          gyrof[2] = biquad_update(&biquad[2], tmp_data.gyro.gyro_z);
+
+          acc_f[0] = biquad_update(&biq_acc[0], tmp_data.accel.accel_y);
+          acc_f[1] = biquad_update(&biq_acc[1], tmp_data.accel.accel_x);
+          acc_f[2] = biquad_update(&biq_acc[2], tmp_data.accel.accel_z);
+
           {
             tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
             dt = (float)(tim5_cnt - last_tim5_cnt) *
                  (float)(htim5.Init.Prescaler + 1U) / (float)(TIM_CLK_FREQ) *
-                 2.0;
+                 1.0f;
           }
 
-          if (eskf_predict(&eskf, &tmp_data.accel, &tmp_data.gyro, dt) < 0) {
+          if (mahony_predict(&eskf, &tmp_data.gyro, dt) < 0) {
             fc_state.state = MAV_STATE_CRITICAL;
+            continue;
           }
 
-          // quat_get_euler(eskf.state.quat, &euler[0], &euler[1], &euler[2]);
+          quat_get_euler(eskf.state.quat, &euler[0], &euler[1], &euler[2]);
+          // if (fabsf(euler[0]) > 1.57f || fabsf(euler[1]) > 1.57f) {
+          //   fc_state.state = MAV_STATE_CRITICAL;
+          //   continue;
+          // }
 
           last_tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
 
-          tick_end = xTaskGetTickCount();
+          // if (notif & SENSOR_FUSE_GPS) {
+          //   notif &= ~SENSOR_FUSE_GPS;
+          //   // TODO set health
 
-          if (notif & SENSOR_FUSE_GPS) {
-            notif &= ~SENSOR_FUSE_GPS;
-            // TODO set health
+          //   LOG_INFO(0, "GPS_UPDATE");
+          //   fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_GPS;
 
-            LOG_INFO(0, "GPS_UPDATE");
-
-            if (eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
-                                fc_state.home_lat, fc_state.home_alt, 0.1, 0.1,
-                                0.1, pm) != 0) {
-              LOG_ERR(0, "INVALID_GPS_UPDATE");
-            }
-          }
+          // if (eskf_update_gps(&eskf, &gps_data, fc_state.home_lon,
+          //                     fc_state.home_lat, fc_state.home_alt, 0.1,
+          //                     0.1, 0.1, pm) != 0) {
+          //   LOG_ERR(0, "INVALID_GPS_UPDATE");
+          // }
+          // }
 
           // msglen = mavlink_msg_param_value_pack(
           //     1, MAV_COMP_ID_AUTOPILOT1, &msg, " EKF_EXEC_TIME ",
           //     (float)(tick_end - tick_start), 0, 1, 0);
           // comm_tx_send(&msg);
           if (tick % 10 == 0) { // 20 Hz
-            if (bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp, pp) !=
-                HAL_OK) {
-              // TODO Handle error
-            }
-            tmp_data.alt =
-                bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
+            // if (bmp_acquire_data(&bmp_pressure, &tmp_data.bmp_temp, tp, pp)
+            // !=
+            //     HAL_OK) {
+            //   // TODO Handle error
+            // }
+            // tmp_data.alt =
+            //     bmp280_get_altitude(bmp_pressure, p_ref, tmp_data.bmp_temp);
             if (qmc5883_read_data(&mag) != HAL_OK) {
               // TODO Handle error
             }
             // tmp_data.heading = qmc5883_get_heading(&mag, mag_decl);
 
-            if (eskf_update_yaw(&eskf, &mag, sigma_mag, &tmp_data.heading,
-                                magcal_offset, magcal_mat) < 0 ||
-                eskf_update_baro(&eskf, tmp_data.alt, sigma_baro) < 0) {
+            if (
+              mahony_update(&eskf, acc_f, &mag, &tmp_data.heading,
+                                 magcal_offset, magcal_mat, dt*10) < 0
+              // eskf_update_yaw(&eskf, &mag, sigma_mag, &tmp_data.heading,
+              //                   magcal_offset, magcal_mat) < 0 ||
+              //                   eskf_update_accel(&eskf, &tmp_data.accel)
+              // < 0
+                /*eskf_update_baro(&eskf, tmp_data.alt, sigma_baro) < 0 ||
+                eskf_update_vbaro(&eskf, tmp_data.alt, EKSF_SBARO_VEL,
+                                  dt * 10) < 0*/) {
               // TODO disable auto, revert to manual rc
             }
 
-            // msglen = mavlink_msg_highres_imu_pack(
-            //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-            //     tmp_data.accel.accel_x, tmp_data.accel.accel_y,
-            //     tmp_data.accel.accel_z, tmp_data.gyro.gyro_x,
-            //     tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_z, mag.MagX,
-            //     mag.MagY, mag.MagZ, tmp_data.heading, pm[4], tmp_data.alt,
-            //     pm[5], 0xFFFF, 0);
+            // eskf_get_cov_bias(&eskf, BiasCov);
+            if (IMU_DEBUG) {
+              // msglen = mavlink_msg_highres_imu_pack(
+              //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+              //     tmp_data.accel.accel_y, tmp_data.accel.accel_x,
+              //     tmp_data.accel.accel_z, tmp_data.gyro.gyro_y,
+              //     tmp_data.gyro.gyro_x, tmp_data.gyro.gyro_z, mag.MagX,
+              //     mag.MagY, mag.MagZ, tmp_data.heading, dt, tmp_data.alt,
+              //     BiasCov[1], 0xFFFF, 0);
 
-            msglen = mavlink_msg_highres_imu_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.acc_b[0],
-                eskf.state.acc_b[1], eskf.state.acc_b[2],
-                tmp_data.accel.accel_y, tmp_data.accel.accel_x,
-                tmp_data.accel.accel_z, tmp_data.gyro.gyro_y,
-                tmp_data.gyro.gyro_x, tmp_data.gyro.gyro_z, tmp_data.heading,
-                dt, tmp_data.alt, 0, 0xFFFF, 0);
-            comm_tx_send(&msg);
+              // comm_tx_send(&msg);
+            }
           }
           if (tick % 20 == 0) {
-            eskf_get_cov_posvel(&eskf, PVcov);
-            eskf_get_cov_orientation(&eskf, Qcov);
-            msglen = mavlink_msg_attitude_quaternion_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat, 0,
-                0, 0, Qcov);
-            comm_tx_send(&msg);
-            msglen = mavlink_msg_local_position_ned_cov_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
-                MAV_ESTIMATOR_TYPE_AUTOPILOT, eskf.state.pos[0],
-                eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
-                eskf.state.vel[1], eskf.state.vel[2], acc_glob[0], acc_glob[1],
-                acc_glob[2], PVcov);
-            comm_tx_send(&msg);
+            // eskf_get_cov_posvel(&eskf, PVcov);
+            // eskf_get_cov_orientation(&eskf, Qcov);
+            if (IMU_DEBUG) {
+              // msglen = mavlink_msg_attitude_quaternion_cov_pack(
+              //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, eskf.state.quat,
+              //     eskf.state.gyro_b[0], eskf.state.gyro_b[1],
+              //     eskf.state.gyro_b[2], Qcov);
+              // comm_tx_send(&msg);
+              // msglen = mavlink_msg_local_position_ned_cov_pack(
+              //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+              //     MAV_ESTIMATOR_TYPE_AUTOPILOT, eskf.state.pos[0],
+              //     eskf.state.pos[1], eskf.state.pos[2], eskf.state.vel[0],
+              //     eskf.state.vel[1], eskf.state.vel[2], acc_glob[0],
+              //     acc_glob[1], acc_glob[2], PVcov);
+              // comm_tx_send(&msg);
+            }
           }
 
-          // xTaskNotifyWait(pdFALSE, 0, &notif, 0);
-          // if (notif & SENSOR_DEBUG_EKF) {
-          // notif &= ~SENSOR_DEBUG_EKF;
-
-          // }
-
-          // if (imu_mutex != NULL) {
-          //   xSemaphoreTake(imu_mutex, portMAX_DELAY);
           imu_data = tmp_data;
           //   xSemaphoreGive(imu_mutex);
+          tick_end = get_time_since_boot_us();
+
+          // msglen = mavlink_msg_highres_imu_pack(
+          //     1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick,
+          //     tmp_data.accel.accel_y, tmp_data.accel.accel_x,
+          //     tmp_data.accel.accel_z, tmp_data.gyro.gyro_y,
+          //     tmp_data.gyro.gyro_x, tmp_data.gyro.gyro_z, mag.MagX, mag.MagY,
+          //     mag.MagZ, tmp_data.heading, tick_end - tick_start,
+          //     tmp_data.alt, 0, 0xFFFF, 0);
+          // comm_tx_send(&msg);
+
         } else if (fc_state.state == MAV_STATE_CRITICAL) {
           LOG_CRIT(0, "FC_STATE_CRITICAL");
         }
@@ -302,14 +366,23 @@ static HAL_StatusTypeDef sensors_init() {
   if ((mpu6050_set_power_options(CLKSEL_PLLX, 0) != HAL_OK) ||
       (mpu6050_set_config(MPU6050_I2C_BYPASS_EN, MPU6050_DATA_RDY_EN, 0, 2) !=
        HAL_OK) ||
-      mpu6050_set_gyro_accel_config(FS_SEL_250, AFS_2G)) {
+      (mpu6050_set_gyro_accel_config(FS_SEL_1000, AFS_8G) != HAL_OK)) {
     LOG_CRIT(TASK_SENSOR_ID, "Accel: couldn't configure");
     // TODO: handle error
     return HAL_ERROR;
 
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Accel: Ready\r\n");
+    fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_3D_ACCEL;
+    fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_3D_GYRO;
   }
+
+  uint8_t gyro_cfg, accel_cfg;
+  mpu6050_read_reg(0x1B, &gyro_cfg);
+  mpu6050_read_reg(0x1C, &accel_cfg);
+  mavlink_msg_debug_vect_pack(0, 0, &msg, "RANGE_CFG", 0, (float)gyro_cfg,
+                              (float)accel_cfg, 0);
+  comm_tx_send(&msg);
 
   bmp_temp = 0;
   bmp_pressure = 0;
@@ -317,12 +390,12 @@ static HAL_StatusTypeDef sensors_init() {
   offG.gyro_x = 0;
   offG.gyro_y = 0;
   offG.gyro_z = 0;
-  offA.accel_y = -0.00505; // 0.048761f;
-  offA.accel_x = 0.04695;  // 0.003296f;
-  offA.accel_z = -0.0774;  //-0.06665f;
-  scaleA[1] = 1.00306;     // 1.003368f; // 0.99664f;
-  scaleA[0] = 1.00306;     // 1.012108f; // 0.98804f;
-  scaleA[2] = 0.98629;     // 0.992729f; // 1.00732f;
+  offA.accel_y = -0.00505f; // 0.048761f;
+  offA.accel_x = 0.04695f;  // 0.003296f;
+  offA.accel_z = -0.0774f;  //-0.06665f;
+  scaleA[1] = 1.00306f;     // 1.003368f; // 0.99664f;
+  scaleA[0] = 1.00306f;     // 1.012108f; // 0.98804f;
+  scaleA[2] = 0.98629f;     // 0.992729f; // 1.00732f;
 
   // initialize mag offsets
   for (size_t i = 0; i < 3; i++) {
@@ -359,6 +432,7 @@ static HAL_StatusTypeDef sensors_init() {
 
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Baro: Ready\r\n");
+    fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_ABSOLUTE_PRESSURE;
   }
 
   // Configure QMC5883 magnetometer
@@ -376,6 +450,7 @@ static HAL_StatusTypeDef sensors_init() {
     return HAL_ERROR;
   } else {
     LOG_INFO(TASK_SENSOR_ID, "Mag: Ready\r\n");
+    fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_3D_MAG;
   }
 
   return HAL_OK;
@@ -392,8 +467,10 @@ static uint8_t sensors_calibrate_stationary(bool *calib_start) {
   calib_tick++;
 
   if (calib_tick % 100 == 0 && (!GPS_REQUIRED | home_set)) {
-    LOG_INFO(0, "BIAS %.4f %.4f %.4f %.4f", gyro_offset.gyro_x,
-             gyro_offset.gyro_y, gyro_offset.gyro_z, p_ref);
+    mavlink_msg_debug_vect_pack(0, 0, &msg, "CALIB_BIAS", 0,
+                                tmp_data.gyro.gyro_y, tmp_data.gyro.gyro_x,
+                                tmp_data.gyro.gyro_z);
+    comm_tx_send(&msg);
     home_set = false;
     *calib_start = false;
 
@@ -404,19 +481,26 @@ static uint8_t sensors_calibrate_stationary(bool *calib_start) {
   bmp_acquire_data(&bmp_pressure, &(tmp_data.bmp_temp), tp,
                    pp); // blocking
 
-  p_ref = p_ref * (calib_tick - 1) / calib_tick + bmp_pressure / calib_tick;
-  gyro_offset.gyro_x = gyro_offset.gyro_x * (calib_tick - 1) / calib_tick +
-                       tmp_data.gyro.gyro_x / calib_tick;
-  gyro_offset.gyro_y = gyro_offset.gyro_y * (calib_tick - 1) / calib_tick +
-                       tmp_data.gyro.gyro_y / calib_tick;
-  gyro_offset.gyro_z = gyro_offset.gyro_z * (calib_tick - 1) / calib_tick +
-                       tmp_data.gyro.gyro_z / calib_tick;
-  accel_offset.accel_x = accel_offset.accel_x * (calib_tick - 1) / calib_tick +
-                         tmp_data.accel.accel_x / calib_tick;
-  accel_offset.accel_y = accel_offset.accel_y * (calib_tick - 1) / calib_tick +
-                         tmp_data.accel.accel_y / calib_tick;
-  accel_offset.accel_z = accel_offset.accel_z * (calib_tick - 1) / calib_tick +
-                         tmp_data.accel.accel_z / calib_tick;
+  p_ref = p_ref * ((float)calib_tick - 1) / (float)calib_tick +
+          bmp_pressure / (float)calib_tick;
+  gyro_offset.gyro_x =
+      gyro_offset.gyro_x * ((float)calib_tick - 1) / (float)calib_tick +
+      tmp_data.gyro.gyro_x / (float)calib_tick;
+  gyro_offset.gyro_y =
+      gyro_offset.gyro_y * ((float)calib_tick - 1) / (float)calib_tick +
+      tmp_data.gyro.gyro_y / (float)calib_tick;
+  gyro_offset.gyro_z =
+      gyro_offset.gyro_z * ((float)calib_tick - 1) / (float)calib_tick +
+      tmp_data.gyro.gyro_z / (float)calib_tick;
+  // accel_offset.accel_x =
+  //     accel_offset.accel_x * ((float)calib_tick - 1) / (float)calib_tick +
+  //     tmp_data.accel.accel_x / (float)calib_tick;
+  // accel_offset.accel_y =
+  //     accel_offset.accel_y * ((float)calib_tick - 1) / (float)calib_tick +
+  //     tmp_data.accel.accel_y / (float)calib_tick;
+  // accel_offset.accel_z =
+  //     accel_offset.accel_z * ((float)calib_tick - 1) / (float)calib_tick +
+  //     tmp_data.accel.accel_z / (float)calib_tick;
 
   return 0;
 }

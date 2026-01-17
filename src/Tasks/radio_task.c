@@ -28,8 +28,9 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
                 (RC_RANGE8));
 
   if (mode_change_req && (rc_scaled->mode != fc_state.custom_mode)) {
-    if (rc_scaled->mode == FLIGHT_MODE_POSHOLD ||
-        rc_scaled->mode == FLIGHT_MODE_GUIDED) {
+    if (/*rc_scaled->mode == FLIGHT_MODE_POSHOLD ||
+        rc_scaled->mode == FLIGHT_MODE_GUIDED*/
+        GPS_REQUIRED) {
       // check if mode allowed: need gps
       if (!(fc_state.sensors_enabled & MAV_SYS_STATUS_SENSOR_GPS)) {
         LOG_ERR(0, "NEED_GPS_FOR_POSHOLD");
@@ -38,7 +39,7 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
         fc_state.custom_mode = rc_scaled->mode;
       }
     } else {
-      LOG_INFO(0, "SETTING_MODE %d", rc_scaled->mode);
+      // LOG_INFO(0, "SETTING_MODE %d", rc_scaled->mode);
       fc_state.custom_mode = rc_scaled->mode;
     }
   }
@@ -52,7 +53,7 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
     rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
                                       RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->throttle =
-        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1.0f, 0.5f);
     break;
 
   case FLIGHT_MODE_STABILIZED:
@@ -63,7 +64,7 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
     rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
                                       RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->throttle =
-        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1.0f, 0.5f);
     break;
     break;
 
@@ -76,7 +77,7 @@ void rc_get_scaled(const crsf_rc_t *raw_rc, rc_scaled_t *rc_scaled) {
     rc_scaled->pitch = CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_PITCH],
                                       RC_VEL_RANGE, RC_VEL_MID);
     rc_scaled->throttle =
-        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1, 0.5);
+        CRSF_TO_SCALED((float)raw_rc->ch_data[RC_MAP_CH_THROTTLE], 1.0f, 0.5f);
     break;
 
   case FLIGHT_MODE_GUIDED:
@@ -115,58 +116,64 @@ void TaskRadioRX(void *argument) {
     Error_Handler();
   }
 
+  fc_state.sensors_enabled &= MAV_SYS_STATUS_SENSOR_RC_RECEIVER;
+
   for (;;) {
     // Block task until new message is received
     // Task frequency tuned to receiver packet rate (150 Hz)
     n = xStreamBufferReceive(crsfStream, &rx_buf, sizeof(rx_buf),
-                             portMAX_DELAY);
-    for (size_t i = 0; i < n; i++) {
-      if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
-        cur_tick = xTaskGetTickCount();
+                             pdMS_TO_TICKS(1000));
+    if (n > 0) {
+      for (size_t i = 0; i < n; i++) {
+        if (radio_parse_crsf_byte(&frame, rx_buf[i], &crsf_state)) {
+          cur_tick = xTaskGetTickCount();
 
-        xTaskNotifyWait(0, ULONG_MAX, &notif, 0);
+          xTaskNotifyWait(0, ULONG_MAX, &notif, 0);
 
-        switch (frame.type) {
-        case CRSF_TYPE_RC:
-          radio_unpack_rc(&rc_data, frame.payload);
-          rc_get_scaled(&rc_data, &rc_scaled);
+          switch (frame.type) {
+          case CRSF_TYPE_RC:
+            radio_unpack_rc(&rc_data, frame.payload);
+            rc_get_scaled(&rc_data, &rc_scaled);
 
-          if ((notif & RADIORX_REQUEST_RAW) &&
-              ((cur_tick > last_tick + timeout) || (last_tick == 0))) {
-            last_tick = cur_tick;
-            notif &= ~RADIORX_REQUEST_RAW;
-            mavlink_msg_rc_channels_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, 16,
-                rc_data.ch_data[0], rc_data.ch_data[1], rc_data.ch_data[2],
-                rc_data.ch_data[3], rc_data.ch_data[4], rc_data.ch_data[5],
-                rc_data.ch_data[6], rc_data.ch_data[7], rc_data.ch_data[8],
-                rc_data.ch_data[9], rc_data.ch_data[10], rc_data.ch_data[11],
-                rc_data.ch_data[12], rc_data.ch_data[13], rc_data.ch_data[14],
-                rc_data.ch_data[15], 0, 0, 255);
-            comm_tx_send(&msg);
+            if ((notif & RADIORX_REQUEST_RAW) &&
+                ((cur_tick > last_tick + timeout) || (last_tick == 0))) {
+              last_tick = cur_tick;
+              notif &= ~RADIORX_REQUEST_RAW;
+              mavlink_msg_rc_channels_pack(
+                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, 16,
+                  rc_data.ch_data[0], rc_data.ch_data[1], rc_data.ch_data[2],
+                  rc_data.ch_data[3], rc_data.ch_data[4], rc_data.ch_data[5],
+                  rc_data.ch_data[6], rc_data.ch_data[7], rc_data.ch_data[8],
+                  rc_data.ch_data[9], rc_data.ch_data[10], rc_data.ch_data[11],
+                  rc_data.ch_data[12], rc_data.ch_data[13], rc_data.ch_data[14],
+                  rc_data.ch_data[15], 0, 0, 255);
+              comm_tx_send(&msg);
+            }
+            if ((notif & RADIORX_REQUEST_SCALED) &&
+                ((cur_tick > last_tick + timeout) || (last_tick == 0))) {
+              last_tick = cur_tick;
+              notif &= ~RADIORX_REQUEST_SCALED;
+              mavlink_msg_rc_channels_scaled_pack(
+                  1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, 0, rc_scaled.arm,
+                  rc_scaled.mode, rc_scaled.roll, rc_scaled.pitch,
+                  rc_scaled.yaw, rc_scaled.throttle, 0, 0, 255);
+              comm_tx_send(&msg);
+            }
+            break;
+          default:
+            if (false) {
+              last_tick = cur_tick;
+              mavlink_msg_param_value_pack(1, MAV_COMP_ID_AUTOPILOT1, &msg,
+                                           "RADIORX_MSGTYPE", frame.type, 0, 1,
+                                           0);
+              comm_tx_send(&msg);
+            }
+            break;
           }
-          if ((notif & RADIORX_REQUEST_SCALED) &&
-              ((cur_tick > last_tick + timeout) || (last_tick == 0))) {
-            last_tick = cur_tick;
-            notif &= ~RADIORX_REQUEST_SCALED;
-            mavlink_msg_rc_channels_scaled_pack(
-                1, MAV_COMP_ID_AUTOPILOT1, &msg, cur_tick, 0, rc_scaled.arm,
-                rc_scaled.mode, rc_scaled.roll, rc_scaled.pitch, rc_scaled.yaw,
-                rc_scaled.throttle, 0, 0, 255);
-            comm_tx_send(&msg);
-          }
-          break;
-        default:
-          if (false) {
-            last_tick = cur_tick;
-            mavlink_msg_param_value_pack(1, MAV_COMP_ID_AUTOPILOT1, &msg,
-                                         "RADIORX_MSGTYPE", frame.type, 0, 1,
-                                         0);
-            comm_tx_send(&msg);
-          }
-          break;
         }
       }
+    } else if (fc_state.state == MAV_STATE_ACTIVE) {
+      // TODO: Land or idle
     }
   }
 }

@@ -35,8 +35,8 @@ void hcsr04_trigger() {
 }
 
 float duration_to_dist(float dur_us, float temperature) {
-  float soundSpeed = (331.4 + (0.606 * temperature));
-  return soundSpeed * dur_us / 10000.0f / 2.0f;
+  float soundSpeed = (331.4f + (0.606f * temperature));
+  return soundSpeed * dur_us / 100000.0f / 2.0f;
 }
 
 static float median5(const float *arr) {

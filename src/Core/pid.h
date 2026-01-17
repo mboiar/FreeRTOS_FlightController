@@ -22,7 +22,8 @@ typedef struct {
 } vec3df;
 
 typedef struct {
-  float roll, pitch, yaw, throttle, ts;
+  float roll, pitch, yaw, throttle;
+  uint32_t ts;
 } setpoint_t;
 
 // pid_init - Initialize PID controller.

@@ -16,6 +16,8 @@ GPS_data gps_data;
 
 float vel_cmd[4];
 
+static mavlink_message_t msgResp;
+
 typedef enum {
   MAV_SET_OFFSET_SENSOR_TYPE_GYRO,
   MAV_SET_OFFSET_SENSOR_TYPE_ACC,
@@ -29,7 +31,6 @@ typedef enum {
 static void handleMsgLong(const mavlink_message_t *msg) {
   mavlink_command_long_t cmd;
   MAV_RESULT mavres;
-  mavlink_message_t msgResp;
   mavres = MAV_RESULT_ACCEPTED;
 
   mavlink_msg_command_long_decode(msg, &cmd);
@@ -186,6 +187,7 @@ void TaskCommRx(void *argument) {
           break;
         case MAVLINK_MSG_ID_BATTERY_STATUS:
           handleBatteryStatusMsg(&msg);
+          break;
         }
       }
     }
