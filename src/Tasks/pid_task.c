@@ -56,7 +56,7 @@ static inline void euler_to_quat(float q[4], float roll, float pitch,
   q[3] = cr * cp * sy - sr * sp * cy; // z
 }
 
-void rate_pid_loop() {
+void rate_pid_loop(float dt) {
   rate_out.roll = pid_compute(&pid_rate.pid_x, gyrof[0] - eskf.state.gyro_b[0],
                               sp_rate.roll, dt);
   rate_out.pitch = pid_compute(&pid_rate.pid_y, gyrof[1] - eskf.state.gyro_b[1],
@@ -232,15 +232,15 @@ void disarm() {
 void TaskFlightLoop(void *argument) {
 
   // TODO: tune PID parameters
-  pid_init(&pid_rate.pid_x, 0.005f, 0.0000f, 0.000f, -0.3f, 0.3f);
-  pid_init(&pid_rate.pid_y, 0.005f, 0.0000f, 0.000f, -0.3f, 0.3f);
-  pid_init(&pid_rate.pid_z, 0.005f, 0.0000f, 0.000f, -0.3f, 0.3f);
+  pid_init(&pid_rate.pid_x, 0.02f, 0.0000f, 0.0000f, -0.3f, 0.3f);
+  pid_init(&pid_rate.pid_y, 0.02f, 0.0000f, 0.0000f, -0.3f, 0.3f);
+  pid_init(&pid_rate.pid_z, 0.02f, 0.0000f, 0.000f, -0.3f, 0.3f);
   pid_init(&pid_vel.pid_x, 0.5f, 0.0f, 0.0f, -0.2f, 0.2f);
   pid_init(&pid_vel.pid_y, 0.5f, 0.0f, 0.0f, -0.2f, 0.2f);
   pid_init(&pid_vel.pid_z, 1.0f, 0.0f, 0.0f, -0.1f, 0.1f);
-  pid_init(&pid_att.pid_x, 20.0f, 0.0f, 0.0f, -10.0f, 10.0f);
-  pid_init(&pid_att.pid_y, 20.0f, 0.0f, 0.0f, -10.0f, 10.0f);
-  pid_init(&pid_att.pid_z, 20.0f, 0.0f, 0.0f, -10.0f, 10.0f);
+  pid_init(&pid_att.pid_x, 0.5f, 0.0f, 0.0f, -10.0f, 10.0f);
+  pid_init(&pid_att.pid_y, 0.5f, 0.0f, 0.0f, -10.0f, 10.0f);
+  pid_init(&pid_att.pid_z, 0.2f, 0.0f, 0.0f, -10.0f, 10.0f);
 
   static uint32_t last_tick, tick, last_inner_tick, loop_cnt;
 
@@ -287,6 +287,8 @@ void TaskFlightLoop(void *argument) {
           }
           arm_cnt = 0;
         }
+
+        rc_scaled.throttle = clamp(rc_scaled.throttle, 0, 0.25f);
 
         switch (fc_state.custom_mode) {
         default:
@@ -429,7 +431,7 @@ void TaskFlightLoop(void *argument) {
 
         // reject old setpoints
         // if (tick - sp_rate.ts < 50000) {
-        rate_pid_loop();
+        rate_pid_loop(dt);
         set_pwm_out();
 
         if (!(fc_state.mode & MAV_MODE_FLAG_HIL_ENABLED) &&

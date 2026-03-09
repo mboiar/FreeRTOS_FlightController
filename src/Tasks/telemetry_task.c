@@ -1,9 +1,11 @@
 #include "API.h"
 #include "Tasks.h"
 #include "common/mavlink.h"
+#include "iwdg.h"
 #include "logger.h"
 #include "tim.h"
 #include "usart.h"
+
 
 #ifdef FC_ENABLE_RUNTIME_STATS
 static char buf[512];
@@ -16,8 +18,10 @@ uint32_t get_time_since_boot_us() {
 static uint8_t telem_buf[16], len;
 
 /**
- * @brief Sends telemetry
+ * @brief Housekeeping
  * @param argument: Not used
+ * @details Housekeeping task communicates system status to external systems and
+ * monitores system health (battery, stack)
  * @retval None
  */
 void TaskTelemetry(void *argument) {
@@ -33,6 +37,8 @@ void TaskTelemetry(void *argument) {
 
     // 10 Hz
     if (tick % 1 == 0) {
+      HAL_IWDG_Refresh(&hiwdg);
+
       if (fc_state.state == MAV_STATE_ACTIVE) {
         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
       }
@@ -130,7 +136,7 @@ void TaskTelemetry(void *argument) {
       watermark[3] = uxTaskGetStackHighWaterMark(TaskTelemetryHandle);
       watermark[4] = uxTaskGetStackHighWaterMark(TaskUARTLoggingHandle);
       watermark[5] = uxTaskGetStackHighWaterMark(TaskCommRxHandle);
-      watermark[6] = uxTaskGetStackHighWaterMark(TaskStartupHandle);
+      watermark[6] = uxTaskGetStackHighWaterMark(TaskAvoidanceHandle);
       for (int i = 0; i < 7; i++) {
         if (watermark[i] < 50) {
           LOG_WARN(0, "LOW_STACK %d", i);

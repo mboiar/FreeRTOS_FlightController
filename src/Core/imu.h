@@ -104,8 +104,8 @@ int eskf_update_accel(eskf_t *eskf, const accel3d_t *acc_m);
 
 int mahony_predict(eskf_t *eskf, const gyro3d_t *gyro_m, const float dt);
 
-int mahony_update(eskf_t *eskf, const acc_m[3], mag3d_t *mag, float *yaw_m,
-                  float offv[3], float offM[3][3], float dt);
+int mahony_update(eskf_t *eskf, const float acc_m[3], mag3d_t *mag,
+                  float *yaw_m, float offv[3], float offM[3][3], float dt);
 
 void mahony_init(eskf_t *eskf, gyro3d_t *gyro_init, mag3d_t *mag_init,
                  accel3d_t *accel_init, float offv[3], float offM[3][3]);

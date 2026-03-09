@@ -1,13 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-#
-# This file is generated only once,
-# and is not re-generated if converter is called multiple times.
-#
-# User is free to modify the file as much as necessary
-#
-
-set(SOFTWARE_SRC_PATH src)
+set(SOFTWARE_SRC_PATH ../src)
 
 add_compile_definitions(CM4)
 add_compile_definitions(MATRIXCHECK)

@@ -63,7 +63,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 void Flash_SPI_TxCpltHanlder() {
   w25q64_transfer_done();
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  xTaskNotifyFromISR(TaskStartupHandle, 0x02, eSetBits,
+  xTaskNotifyFromISR(TaskAvoidanceHandle, 0x02, eSetBits,
                      &xHigherPriorityTaskWoken);
   // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -72,7 +72,7 @@ void Flash_SPI_TxCpltHanlder() {
 void Flash_SPI_TxRxCpltHandler() {
   w25q64_transfer_done();
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  xTaskNotifyFromISR(TaskStartupHandle, 0x02, eSetBits,
+  xTaskNotifyFromISR(TaskAvoidanceHandle, 0x02, eSetBits,
                      &xHigherPriorityTaskWoken);
   // vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -99,8 +99,8 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
     }
     // 10 Hz
     if (TIM3tick % 100 == 0) {
-      if (TaskStartupHandle != NULL) {
-        xTaskNotifyFromISR(TaskStartupHandle, 0x01, eSetBits,
+      if (TaskAvoidanceHandle != NULL) {
+        xTaskNotifyFromISR(TaskAvoidanceHandle, 0x01, eSetBits,
                            &xHigherPriorityTaskWoken);
       }
     }
@@ -111,7 +111,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
     // hcsr04 callback
     HAL_GPIO_WritePin(HCSR04_TRIG_PORT, HCSR04_TRIG_PIN, GPIO_PIN_RESET);
     HAL_TIM_OC_Stop_IT(&htim3, TIM_CHANNEL_2);
-    xTaskNotifyFromISR(TaskStartupHandle, 0x02, eSetBits,
+    xTaskNotifyFromISR(TaskAvoidanceHandle, 0x02, eSetBits,
                        &xHigherPriorityTaskWoken);
   }
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);

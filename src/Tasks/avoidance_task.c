@@ -24,7 +24,7 @@ static uint32_t cur_tick, notif;
 
 void handleDistEvent(const EdgeEvent *ev);
 
-void StartupTask(void *argument) {
+void AvoidanceTask(void *argument) {
   mavlink_message_t msg;
   EdgeEvent event;
 

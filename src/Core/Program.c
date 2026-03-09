@@ -44,10 +44,10 @@ const osThreadAttr_t TaskUARTLogging_attributes = {
     .priority = (osPriority_t)TASK_LOGGING_PRIORITY,
 };
 
-const osThreadAttr_t TaskStartup_attributes = {
-    .name = "TaskStartup",
-    .stack_size = TASK_STARTUP_STACK_SIZE,
-    .priority = (osPriority_t)TASK_STARTUP_PRIORITY,
+const osThreadAttr_t TaskAvoidance_attributes = {
+    .name = "TaskAvoidance",
+    .stack_size = TASK_Avoidance_STACK_SIZE,
+    .priority = (osPriority_t)TASK_Avoidance_PRIORITY,
 };
 
 const osThreadAttr_t TaskCommRx_attributes = {
@@ -68,7 +68,7 @@ osThreadId_t TaskTelemetryHandle;
 osThreadId_t TaskRadioRXHandle;
 osThreadId_t TaskFlightLoopHandle;
 osThreadId_t TaskUARTLoggingHandle;
-osThreadId_t TaskStartupHandle;
+osThreadId_t TaskAvoidanceHandle;
 osThreadId_t TaskCommRxHandle;
 
 SemaphoreHandle_t imu_mutex;
@@ -153,8 +153,9 @@ void Init() {
     Error_Handler();
   }
 
-  TaskStartupHandle = osThreadNew(StartupTask, NULL, &TaskStartup_attributes);
-  if (TaskStartupHandle == NULL) {
+  TaskAvoidanceHandle =
+      osThreadNew(AvoidanceTask, NULL, &TaskAvoidance_attributes);
+  if (TaskAvoidanceHandle == NULL) {
     Error_Handler();
   }
 

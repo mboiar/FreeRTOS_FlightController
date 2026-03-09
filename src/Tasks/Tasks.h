@@ -20,7 +20,7 @@ typedef enum {
   TASK_TELEMETRY_ID,
   TASK_FLIGHT_LOOP_ID,
   TASK_LOGGING_ID,
-  TASK_STARTUP_ID,
+  TASK_Avoidance_ID,
   TASK_COMMRX_ID,
   TaskID_LEN
 } TaskID;
@@ -42,7 +42,7 @@ extern osThreadId_t TaskTelemetryHandle;
 extern osThreadId_t TaskRadioRXHandle;
 extern osThreadId_t TaskFlightLoopHandle;
 extern osThreadId_t TaskUARTLoggingHandle;
-extern osThreadId_t TaskStartupHandle;
+extern osThreadId_t TaskAvoidanceHandle;
 extern osThreadId_t TaskCommRxHandle;
 
 extern StreamBufferHandle_t crsfStream;
@@ -75,7 +75,7 @@ extern float euler[3];
 
 uint32_t get_time_since_boot_us();
 
-void StartupTask(void *argument);
+void AvoidanceTask(void *argument);
 void TaskSensor(void *argument);
 void TaskRadioRX(void *arg);
 void TaskFlightLoop(void *argument);

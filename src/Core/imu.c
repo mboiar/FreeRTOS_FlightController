@@ -366,8 +366,8 @@ int mahony_predict(eskf_t *eskf, const gyro3d_t *gyro_m, const float dt) {
   return 0;
 }
 
-int mahony_update(eskf_t *eskf, const acc_m[3], mag3d_t *mag, float *yaw_m,
-                  float offv[3], float offM[3][3], float dt) {
+int mahony_update(eskf_t *eskf, const float acc_m[3], mag3d_t *mag,
+                  float *yaw_m, float offv[3], float offM[3][3], float dt) {
 
   float mag_v[3] = {mag->MagY, mag->MagX, -mag->MagZ};
   float e[3] = {0, 0, 0};

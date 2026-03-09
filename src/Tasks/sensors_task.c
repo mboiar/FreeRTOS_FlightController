@@ -26,16 +26,34 @@ float biquad_update(biquad_t *f, float x) {
   return y;
 }
 
-void biquad_init(biquad_t *f, float fc, float fs) {
-  float w = (float)M_PI * 2 * fc / fs;
-  float a, a0;
-  a = sinf(w) / (float)M_SQRT2;
-  a0 = 1 + a;
-  f->b0 = ((1 - cosf(w)) / 2) / a0;
-  f->b1 = ((1 - cosf(w))) / a0;
-  f->b2 = ((1 - cosf(w)) / 2) / a0;
-  f->a1 = (-2 * cosf(w)) / a0;
-  f->a2 = (1 - a) / a0;
+typedef enum { BIQUAD_LOWPASS, BIQUAD_NOTCH } biquad_type_t;
+
+void biquad_init(biquad_t *f, biquad_type_t type, float fc, float fs, float q) {
+  float w = 2.0f * M_PI * fc / fs;
+
+  if (type == BIQUAD_LOWPASS) {
+    float a = sinf(w) / (float)M_SQRT2;
+    float a0 = 1.0f + a;
+    f->b0 = ((1.0f - cosf(w)) / 2.0f) / a0;
+    f->b1 = (1.0f - cosf(w)) / a0;
+    f->b2 = ((1.0f - cosf(w)) / 2.0f) / a0;
+    f->a1 = (-2.0f * cosf(w)) / a0;
+    f->a2 = (1.0f - a) / a0;
+
+  } else if (type == BIQUAD_NOTCH) {
+    float alpha = sinf(w) / (2.0f * q);
+    float cos_w = cosf(w);
+    float a0 = 1.0f + alpha;
+
+    f->b0 = 1.0f / a0;
+    f->b1 = -2.0f * cos_w / a0;
+    f->b2 = f->b0; // Symmetric
+    f->a1 = f->b1; // Same as b1
+    f->a2 = (1.0f - alpha) / a0;
+  }
+
+  // Reset state variables
+  f->z1 = f->z2 = 0.0f;
 }
 
 sensor_data_t imu_data;
@@ -79,8 +97,9 @@ static accel3d_t accel_offset = {0, 0, 0};
 
 float gyrof[3];
 float acc_f[3];
-biquad_t biquad[3];
-biquad_t biq_acc[3];
+biquad_t gyro_lpf[3];
+biquad_t acc_lpf[3];
+biquad_t gyro_notch[3];
 
 eskf_t eskf;
 
@@ -159,12 +178,11 @@ void TaskSensor(void *argument) {
               mahony_init(&eskf, &gyro_offset, &mag, &accel_offset,
                           magcal_offset, magcal_mat);
 
-              biquad_init(&biquad[0], 20, 1000);
-              biquad_init(&biquad[1], 20, 1000);
-              biquad_init(&biquad[2], 20, 1000);
-              biquad_init(&biq_acc[0], 5, 1000);
-              biquad_init(&biq_acc[1], 5, 1000);
-              biquad_init(&biq_acc[2], 5, 1000);
+              for (int i = 0; i < 3; i++) {
+                biquad_init(&gyro_lpf[i], BIQUAD_LOWPASS, 20, 1000, 0.707f);
+                biquad_init(&gyro_notch[i], BIQUAD_NOTCH, 10, 1000, 2.5f);
+                biquad_init(&acc_lpf[i], BIQUAD_LOWPASS, 5, 1000, 0.707f);
+              }
 
               // need GPS in case of auto
               // if ((fc_state.mode & MAV_MODE_FLAG_GUIDED_ENABLED) ||
@@ -188,13 +206,19 @@ void TaskSensor(void *argument) {
             fc_state.state = MAV_STATE_EMERGENCY;
             continue;
           }
-          gyrof[0] = biquad_update(&biquad[0], tmp_data.gyro.gyro_y);
-          gyrof[1] = biquad_update(&biquad[1], tmp_data.gyro.gyro_x);
-          gyrof[2] = biquad_update(&biquad[2], tmp_data.gyro.gyro_z);
 
-          acc_f[0] = biquad_update(&biq_acc[0], tmp_data.accel.accel_y);
-          acc_f[1] = biquad_update(&biq_acc[1], tmp_data.accel.accel_x);
-          acc_f[2] = biquad_update(&biq_acc[2], tmp_data.accel.accel_z);
+          // cascade filtering
+          gyrof[0] = biquad_update(&gyro_notch[0], tmp_data.gyro.gyro_y);
+          gyrof[1] = biquad_update(&gyro_notch[1], tmp_data.gyro.gyro_x);
+          gyrof[2] = biquad_update(&gyro_notch[2], tmp_data.gyro.gyro_z);
+
+          for (int i = 0; i < 3; i++) {
+            gyrof[i] = biquad_update(&gyro_lpf[i], gyrof[i]);
+          }
+
+          acc_f[0] = biquad_update(&acc_lpf[0], tmp_data.accel.accel_y);
+          acc_f[1] = biquad_update(&acc_lpf[1], tmp_data.accel.accel_x);
+          acc_f[2] = biquad_update(&acc_lpf[2], tmp_data.accel.accel_z);
 
           {
             tim5_cnt = __HAL_TIM_GET_COUNTER(&htim5);
